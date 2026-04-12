@@ -11,10 +11,12 @@ fi
 CAMERA_IP="$1"
 TELNET_PORT="${2:-24}"
 
-bash "$REPO_ROOT/scripts/build_anyka.sh" >/dev/null
-bash "$REPO_ROOT/scripts/make_deploy_reader8554_telnet.sh" >/dev/null
+bash "$REPO_ROOT/scripts/build_rtsp_kick_anyka.sh" >/dev/null
 
-python3 "$REPO_ROOT/tools/telnet_exec.py" "$CAMERA_IP" \
+python3 "$REPO_ROOT/tools/telnet_upload_file.py" "$CAMERA_IP" \
+  "$REPO_ROOT/out/rtsp_kick_arm" \
+  /tmp/rtsp_kick \
   --port "$TELNET_PORT" \
-  --wait 15 \
-  --file "$REPO_ROOT/out/deploy_reader8554_to_sd.telnet"
+  --wait 0.8 \
+  --chunk-lines 4 \
+  --commands-per-session 1

@@ -1,374 +1,298 @@
 # LSC Codex RTSP
 
-RTSP sidecar para cameras LSC/Tuya baseadas em Anyka, sem substituir o `anyka_ipc` oficial.
+Tools and notes for enabling RTSP on LSC / Tuya Anyka cameras without replacing the stock `anyka_ipc` binary.
 
-Em vez de trocar o binario principal da camera por um build de outro firmware, este projeto sobe um segundo processo em `8554` que le os ring buffers que o firmware stock ja gera em `/tmp` e os reempacota como RTSP.
+The project now has a clear primary path:
 
-## Por que este hack e superior
+- preferred path:
+  wake up the vendor RTSP server already linked into the stock firmware and chain the Tuya video callbacks into it
+- archived path:
+  a custom sidecar RTSP server that rebuilt media from the stock ring buffers
 
-O metodo antigo mais comum para essas cameras troca o `anyka_ipc` inteiro por outro binario com RTSP habilitado. Isso ate pode abrir a `554`, mas costuma misturar branches diferentes de firmware/Tuya e pode fazer o app sumir, perder cloud ou quebrar comportamento de PTZ.
+The sidecar path is now archived under:
 
-Este projeto segue outra ideia:
+- `unused/sidecar/`
 
-- mantem o `anyka_ipc` oficial rodando
-- nao tenta abrir o sensor direto com SDK Anyka
-- nao toma posse dos recursos de captura do firmware
-- so le os buffers ja produzidos pelo processo stock
-- publica um RTSP separado em `8554`
+## Current status
 
-Na pratica, o app Tuya continua no caminho oficial e o nosso processo so funciona como um "sidecar".
+As of `2026-04-12`, the vendor RTSP detour is the recommended hack.
 
-## Estado atual
+It has been validated on a real camera with:
 
-O que ja esta provado neste projeto:
-
-- build ARM EABI5 funcionando com a toolchain Anyka original
-- binario custom rodando na camera de verdade
-- `anyka_ipc` oficial e servidor custom coexistindo ao mesmo tempo
-- RTSP em `rtsp://CAMERA_IP:8554/main_ch`
-- `ffprobe` reconhecendo:
-  `hevc`
-  `2304x1296`
-  `15 fps`
-
-O que ainda nao esta pronto:
-
-- audio AAC
-- `sub_ch`
-- multiplos clientes
-- autenticacao RTSP
-- limpeza completa do empacotamento RTP/HEVC
-
-Limitacao conhecida atual:
-
-- alguns clientes, inclusive `ffprobe`, ainda podem mostrar:
-  `Illegal temporal ID in RTP/HEVC packet`
-
-Mesmo assim, no estado atual o stream ja foi identificado corretamente como HEVC ao vivo na camera real.
-
-## Versao testada
-
-Testado em:
-
-- camera LSC rotatable / Tuya baseada em Anyka
+- model family:
+  LSC rotatable / Tuya / Anyka
 - firmware:
   `V3.2863.105`
-- modo:
-  firmware stock restaurado
-  `anyka_ipc` oficial preservado
-  servidor custom rodando em `8554`
+- stock process:
+  `anyka_ipc`
+- camera IP used during validation:
+  `192.168.1.126`
 
-Durante os testes bem-sucedidos:
+What is already proven:
 
-- o `anyka_ipc` oficial continuou ouvindo em `6668`
-- o nosso processo abriu `8554`
-- o caminho oficial do app Tuya permaneceu preservado porque o `anyka_ipc` stock continuou ativo
+- the Tuya app remains usable after the detour is installed
+- the stock `anyka_ipc` process remains alive
+- the stock vendor RTSP server responds on:
+  `88`
+  `89`
+- the main stream is available at:
+  `rtsp://CAMERA_IP:88/videoMain`
+- the sub stream is available at:
+  `rtsp://CAMERA_IP:89/videoSub`
+- live RTP media was captured successfully for:
+  `88/videoMain/track1` = H.265 video
+  `88/videoMain/track2` = PCMA audio
+  `89/videoSub/track1` = H.265 video
+  `89/videoSub/track2` = PCMA audio
 
-Observacao importante:
+What is not currently active:
 
-Este projeto parte do pressuposto de que voce ja conseguiu acesso por SD/telnet a camera sem deixar um `anyka_ipc` estrangeiro substituindo o original.
+- the legacy sidecar on `8554`
+- a vendor listener on `554`
 
-## Como funciona
+Live checks on `2026-04-12` confirmed:
 
-O fluxo e este:
+- `88` open
+- `89` open
+- `554` closed
+- `8554` closed
 
-1. O `anyka_ipc` stock gera os buffers:
-   `/tmp/VideoMainStream0`
-   `/tmp/VideoSubStream0`
-   `/tmp/AudioStream`
-2. O servidor deste projeto le o ring buffer principal.
-3. Ele interpreta a tabela de frames, os offsets circulares e o wrapper Anyka por frame.
-4. Os payloads `type = 129` sao convertidos em pacotes RTP/HEVC.
-5. O servidor expoe o stream em:
-   `rtsp://CAMERA_IP:8554/main_ch`
+## Tested RTSP URLs
 
-Ou seja:
+These URLs were validated against the live camera:
 
-- Tuya continua usando o caminho oficial
-- nos so aproveitamos os buffers internos do firmware
+- `rtsp://192.168.1.126:88/videoMain`
+- `rtsp://192.168.1.126:89/videoSub`
 
-## Fontes e creditos
+The SDP exposed by the server uses these track URLs:
 
-Este projeto nao nasceu do nada. Ele foi desenvolvido com base em reverse engineering proprio e tambem em referencias publicas importantes:
+- `rtsp://192.168.1.126:88/videoMain/track1`
+- `rtsp://192.168.1.126:88/videoMain/track2`
+- `rtsp://192.168.1.126:89/videoSub/track1`
+- `rtsp://192.168.1.126:89/videoSub/track2`
 
-- [guino/LSCOutdoor1080P](https://github.com/guino/LSCOutdoor1080P)
-  Base para entender o bootstrap por SD, o ecossistema LSC antigo e os hacks classicos de RTSP.
-- [tasarren/lsc-tuya-toolkit](https://github.com/tasarren/lsc-tuya-toolkit)
-  Importante para boot hijack, factory mode, comportamento Anyka/Tuya e estrutura geral da inicializacao.
-- [Nemobi/ak3918ev300v18](https://github.com/Nemobi/ak3918ev300v18)
-  Fonte primaria do SDK Anyka usada para entender como `factory_cfg.ini` e `CONFIG_RTSP_SUPPORT` entram no `anyka_ipc`.
-- [Nemobi/Anyka](https://github.com/Nemobi/Anyka)
-  Referencia util sobre SDK, demos e comportamento esperado de builds Anyka.
-- [MuhammedKalkan/Anyka-Camera-Firmware](https://github.com/MuhammedKalkan/Anyka-Camera-Firmware)
-  Usado para comparar apps diretos de captura, dependencias de runtime e mostrar por que abrir o sensor direto nao era o melhor caminho para coexistencia com Tuya.
-- [ricardojlrufino/arm-anykav200-crosstool](https://github.com/ricardojlrufino/arm-anykav200-crosstool)
-  Fonte da toolchain cruzada usada para gerar o binario ARM compativel.
-- [seydx/tuya-ipc-terminal](https://github.com/seydx/tuya-ipc-terminal)
-  Nao e usado na camera, mas serviu como referencia de fallback host-side para Tuya -> RTSP.
+In normal clients, use the base URLs first:
 
-O desenho final deste repositorio, porem, e diferente dessas referencias:
+- `rtsp://CAMERA_IP:88/videoMain`
+- `rtsp://CAMERA_IP:89/videoSub`
 
-- nao substitui `anyka_ipc`
-- nao usa o SDK para capturar direto do sensor
-- usa leitura dos ring buffers do firmware stock
+## Why the vendor detour is better
 
-## Pre-requisitos
+The older common hack replaces `anyka_ipc` with a different firmware build that exposes RTSP. That can work, but it frequently breaks Tuya cloud, PTZ behavior, or app visibility because it swaps out the main stock process.
 
-Para compilar:
+The current approach is safer because it:
 
-- Ubuntu 22.04 ou WSL similar
-- `bash`
-- `gcc`
-- `python3`
-- `wget`
-- `rsync`
-- `dpkg-deb`
-- `bubblewrap` (`bwrap`)
-- `ffprobe` ou `ffplay` para validacao
+- keeps the original `anyka_ipc` running
+- does not replace the firmware's main executable
+- does not take direct ownership of the sensor outside the stock pipeline
+- reuses the vendor RTSP stack already present in the stock binary
 
-Para instalar na camera:
+## How it works
 
-- acesso telnet funcional a camera
-- acesso de escrita a SD montada em `/tmp/sd`
-- firmware stock com `anyka_ipc` original ativo
+The detour uses `src/rtsp_kick.c`.
 
-## Estrutura do repositorio
+It does two things:
 
-- `src/anyka_ring_rtsp_server.c`
-  servidor RTSP sidecar
-- `scripts/build_host.sh`
-  build x86_64 para validar offline
-- `scripts/build_anyka.sh`
-  build ARM EABI5 para a camera
-- `scripts/setup_i386_runtime.sh`
-  baixa runtime i386 local para destravar a toolchain antiga
-- `scripts/setup_i386_root.sh`
-  monta a arvore minima de libs i386
-- `scripts/sync_anyka_build_env.sh`
-  sincroniza toolchain + runtime para `~/lsc-build-env`
-- `scripts/run_anyka_toolchain_bwrap.sh`
-  executa a toolchain Anyka dentro de `bwrap`
-- `scripts/make_deploy_reader8554_telnet.sh`
-  gera o script de deploy via telnet
-- `scripts/deploy_live.sh`
-  faz build, gera deploy e envia para a camera
-- `scripts/start_reader8554_live.sh`
-  snippet camera-side para iniciar o servidor ao vivo
-- `scripts/stop_reader8554.sh`
-  snippet camera-side para parar o servidor
-- `scripts/show_reader8554_log.sh`
-  mostra o log do processo na camera
+1. it performs a one-shot `ptrace` call into `ht_rtsp_start` inside the stock process
+2. it optionally installs two heap stubs that preserve the active Tuya video callbacks and also call `ht_rtsp_send_video_frame`
+
+That second step is the key to coexistence:
+
+- Tuya keeps receiving frames through the original wrappers
+- the stock RTSP worker also starts receiving video frames
+
+The resulting stock RTSP server then serves:
+
+- `videoMain` on port `88`
+- `videoSub` on port `89`
+
+## Why not `554` or `8554`
+
+This is the important practical answer:
+
+- `8554` was the old custom sidecar port and is not part of the stock vendor RTSP path
+- `554` exists in the factory RTSP path, but that factory path is not the safe coexistence path
+- the safe stock worker used by `ht_rtsp_start` serves on `88` and `89`
+
+So:
+
+- changing the port is not a simple `rtsp_kick` flag today
+- `554` would require a different patch path or a relay layer
+- `8554` would mean reviving the archived sidecar or building a new forwarder
+
+In other words:
+
+- yes, alternate ports are theoretically possible
+- no, they are not part of the currently proven safe hack
+
+## Repository layout
+
+Current active files:
+
+- `src/rtsp_kick.c`
+- `scripts/build_rtsp_kick_anyka.sh`
+- `scripts/make_deploy_rtsp_kick_telnet.sh`
+- `scripts/deploy_rtsp_kick.sh`
 - `tools/telnet_exec.py`
-  helper para enviar comandos/scripts via telnet
+- `tools/telnet_upload_file.py`
+- `tools/rtsp_probe.py`
+- `tools/rtsp_probe_windows.ps1`
+- `VENDOR_RTSP_DETOUR.md`
+- `INVESTIGATION.md`
 
-## Preparando a toolchain
+Archived legacy sidecar files:
 
-Este projeto usa a toolchain antiga da Anyka, que tem binarios host i386.
+- `unused/sidecar/`
 
-Em vez de instalar pacotes i386 globalmente no sistema, os scripts deste repositorio criam um runtime local e executam a toolchain dentro de `bwrap`.
+## Build
 
-### 1. Baixe ou extraia a toolchain
+Preferred build path:
 
-Voce precisa de um diretorio extraido que contenha algo como:
+- the original Anyka toolchain under `toolchain/arm-anykav200-crosstool`
 
-```text
-.../usr/bin/arm-anykav200-linux-uclibcgnueabi-gcc.br_real
+Command:
+
+```bash
+bash scripts/build_rtsp_kick_anyka.sh
 ```
 
-Voce pode usar como base o repositorio:
+Output:
 
+```text
+out/rtsp_kick_arm
+```
+
+The build script first tries the old Anyka toolchain and falls back to `arm-linux-gnueabi-gcc` if needed.
+
+## Deploy to the camera
+
+Recommended upload:
+
+```bash
+bash scripts/deploy_rtsp_kick.sh 192.168.1.126 24
+```
+
+That script:
+
+- builds `rtsp_kick`
+- uploads it to `/tmp/rtsp_kick`
+
+The upload is volatile by design:
+
+- rebooting the camera clears `/tmp/rtsp_kick`
+
+## Start the vendor RTSP server
+
+Dry run:
+
+```bash
+python3 tools/telnet_exec.py 192.168.1.126 \
+  --command '/tmp/rtsp_kick $(pidof anyka_ipc) --verbose --dry-run'
+```
+
+Wake the stock RTSP worker:
+
+```bash
+python3 tools/telnet_exec.py 192.168.1.126 \
+  --command '/tmp/rtsp_kick $(pidof anyka_ipc) --verbose'
+```
+
+Install the video chain after the worker exists:
+
+```bash
+python3 tools/telnet_exec.py 192.168.1.126 \
+  --command '/tmp/rtsp_kick $(pidof anyka_ipc) --verbose --install-video-chain --no-start-call'
+```
+
+Safe dry run for the chain install:
+
+```bash
+python3 tools/telnet_exec.py 192.168.1.126 \
+  --command '/tmp/rtsp_kick $(pidof anyka_ipc) --verbose --install-video-chain --no-start-call --dry-run'
+```
+
+## Validation
+
+### Camera-side state
+
+```bash
+python3 tools/telnet_exec.py 192.168.1.126 \
+  --command 'ps; netstat -ltn'
+```
+
+Expected listeners for the proven vendor path:
+
+- `88`
+- `89`
+- `6668`
+
+### Windows-side RTP validation
+
+Main stream video:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/rtsp_probe_windows.ps1 `
+  -CameraHost 192.168.1.126 `
+  -Port 88 `
+  -Path videoMain `
+  -Kind video `
+  -ClientPort 50024
+```
+
+Main stream audio:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/rtsp_probe_windows.ps1 `
+  -CameraHost 192.168.1.126 `
+  -Port 88 `
+  -Path videoMain `
+  -Kind audio `
+  -ClientPort 50026
+```
+
+Sub stream video:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/rtsp_probe_windows.ps1 `
+  -CameraHost 192.168.1.126 `
+  -Port 89 `
+  -Path videoSub `
+  -Kind video `
+  -ClientPort 50028
+```
+
+Sub stream audio:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/rtsp_probe_windows.ps1 `
+  -CameraHost 192.168.1.126 `
+  -Port 89 `
+  -Path videoSub `
+  -Kind audio `
+  -ClientPort 50030
+```
+
+## WSL note
+
+Be careful with validation from `WSL2`.
+
+`SETUP` and `PLAY` may succeed while RTP appears to time out because the UDP return path lands on the Windows host and not on the WSL VM. That is why the final live RTP proof in this repository was done from native Windows sockets.
+
+## References
+
+The work in this repository was informed by these public sources:
+
+- [tasarren/lsc-tuya-toolkit](https://github.com/tasarren/lsc-tuya-toolkit)
+- [guino/LSCOutdoor1080P](https://github.com/guino/LSCOutdoor1080P)
+- [Nemobi/ak3918ev300v18](https://github.com/Nemobi/ak3918ev300v18)
+- [Nemobi/Anyka](https://github.com/Nemobi/Anyka)
+- [MuhammedKalkan/Anyka-Camera-Firmware](https://github.com/MuhammedKalkan/Anyka-Camera-Firmware)
 - [ricardojlrufino/arm-anykav200-crosstool](https://github.com/ricardojlrufino/arm-anykav200-crosstool)
+- [seydx/tuya-ipc-terminal](https://github.com/seydx/tuya-ipc-terminal)
 
-Importante:
+## Next useful work
 
-- preserve symlinks
-- extraia no WSL/Linux, nao pelo Explorer do Windows
-
-### 2. Aponte `ANYKA_TOOLCHAIN_SRC`
-
-Exemplo:
-
-```bash
-export ANYKA_TOOLCHAIN_SRC="$HOME/src/arm-anykav200-crosstool/arm-anykav200-crosstool"
-```
-
-O valor precisa ser o diretorio que contem `usr/bin`, `usr/libexec` e o sysroot da toolchain.
-
-### 3. Faca o build ARM
-
-```bash
-bash scripts/build_anyka.sh
-```
-
-O binario gerado ficara em:
-
-```text
-out/anyka_ring_rtsp_server_arm
-```
-
-## Build host
-
-Para validar offline em x86_64:
-
-```bash
-bash scripts/build_host.sh
-```
-
-Isso gera:
-
-```text
-out/anyka_ring_rtsp_server_host
-```
-
-## Validacao offline no host
-
-Se voce tiver um dump do ring buffer principal:
-
-```bash
-./out/anyka_ring_rtsp_server_host \
-  --ring /caminho/para/VideoMainStream0.full \
-  --port 8554 \
-  --static-replay \
-  --verbose
-```
-
-Em outro terminal:
-
-```bash
-ffprobe -rtsp_transport tcp -show_streams rtsp://127.0.0.1:8554/main_ch
-```
-
-## Instalacao na camera
-
-### Metodo simples
-
-Se voce ja tem telnet funcionando:
-
-```bash
-bash scripts/deploy_live.sh 192.168.1.126
-```
-
-Esse script:
-
-- faz o build ARM
-- gera `out/deploy_reader8554_to_sd.telnet`
-- envia o binario para `/tmp/sd/anyka_ring_rtsp_server`
-- sobe o processo em:
-  `8554`
-
-### Metodo manual
-
-1. Gere o script de deploy:
-
-```bash
-bash scripts/make_deploy_reader8554_telnet.sh
-```
-
-2. Envie para a camera:
-
-```bash
-python3 tools/telnet_exec.py 192.168.1.126 --wait 15 --file out/deploy_reader8554_to_sd.telnet
-```
-
-3. Verifique:
-
-```bash
-ffprobe -rtsp_transport tcp -show_streams rtsp://192.168.1.126:8554/main_ch
-```
-
-## Uso
-
-URL principal:
-
-```text
-rtsp://CAMERA_IP:8554/main_ch
-```
-
-Exemplo com `ffplay`:
-
-```bash
-ffplay -rtsp_transport tcp rtsp://192.168.1.126:8554/main_ch
-```
-
-Exemplo com `ffprobe`:
-
-```bash
-ffprobe -rtsp_transport tcp -show_streams rtsp://192.168.1.126:8554/main_ch
-```
-
-## Operacao manual via telnet
-
-Para iniciar manualmente na camera:
-
-```bash
-python3 tools/telnet_exec.py 192.168.1.126 --file scripts/start_reader8554_live.sh
-```
-
-Para parar:
-
-```bash
-python3 tools/telnet_exec.py 192.168.1.126 --file scripts/stop_reader8554.sh
-```
-
-Para ver o log:
-
-```bash
-python3 tools/telnet_exec.py 192.168.1.126 --file scripts/show_reader8554_log.sh
-```
-
-## Evidencia do teste ao vivo
-
-Durante o teste real que validou o projeto, `ffprobe` retornou:
-
-```text
-codec_name=hevc
-width=2304
-height=1296
-avg_frame_rate=15/1
-```
-
-E na camera os processos coexistiam assim:
-
-```text
-8554 -> anyka_ring_rtsp_server
-6668 -> anyka_ipc
-```
-
-## Limitacoes atuais
-
-- video apenas
-- apenas `main_ch`
-- um cliente por vez
-- sem autenticacao
-- empacotamento RTP/HEVC ainda precisa refinamento
-- ainda existe o aviso:
-  `Illegal temporal ID in RTP/HEVC packet`
-
-## Seguranca e risco
-
-Este projeto e bem menos invasivo que substituir o `anyka_ipc`, mas ainda e um hack.
-
-Recomendacoes:
-
-- nao mexa em flash se nao for necessario
-- mantenha um caminho de recuperacao por reboot
-- use a SD como area de staging
-- teste primeiro com telnet, nao automatize no boot antes de validar
-
-## Recuperacao
-
-Se algo der errado:
-
-- mate o processo:
-  `killall anyka_ring_rtsp_server`
-- ou reinicie a camera
-
-Como o `anyka_ipc` original nao e substituido por este projeto, a recuperacao e muito mais simples do que nos hacks de troca de binario principal.
-
-## Proximos passos
-
-- corrigir o detalhe de RTP/HEVC que gera o aviso de temporal ID
-- adicionar AAC usando os frames `type = 130`
-- expor `sub_ch`
-- melhorar multiplos clientes
-- opcionalmente integrar start automatico por SD sem tocar no binario oficial
+- automate the detour after boot
+- decide whether a port relay to `554` is worth the added complexity
+- run longer soak tests with the Tuya app active
+- keep the archived sidecar only as a reverse-engineering aid, not the primary delivery path

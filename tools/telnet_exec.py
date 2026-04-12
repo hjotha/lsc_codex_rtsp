@@ -6,6 +6,17 @@ import telnetlib
 import time
 
 
+def write_safely(tn: telnetlib.Telnet, data: bytes, chunk_size: int, chunk_delay: float) -> None:
+    if chunk_size <= 0 or len(data) <= chunk_size:
+        tn.write(data)
+        return
+
+    for offset in range(0, len(data), chunk_size):
+        tn.write(data[offset : offset + chunk_size])
+        if chunk_delay > 0:
+            time.sleep(chunk_delay)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run commands over telnet and print output.")
     parser.add_argument("host", help="Target host")
@@ -15,6 +26,18 @@ def main() -> int:
         type=float,
         default=1.0,
         help="Seconds to wait after connecting and after sending commands",
+    )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=512,
+        help="How many bytes to send per telnet write call",
+    )
+    parser.add_argument(
+        "--chunk-delay",
+        type=float,
+        default=0.01,
+        help="Seconds to sleep between telnet write chunks",
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--command", help="Single command string to send")
@@ -40,7 +63,7 @@ def main() -> int:
                 sys.stdout.buffer.write(banner)
         except EOFError:
             pass
-        tn.write(data.encode("utf-8"))
+        write_safely(tn, data.encode("utf-8"), args.chunk_size, args.chunk_delay)
         time.sleep(args.wait)
         try:
             output = tn.read_very_eager()
