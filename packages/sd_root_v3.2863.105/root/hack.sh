@@ -1,10 +1,11 @@
 #!/bin/sh
 
-# Tested SD entrypoint for the stock boot hook on firmware V3.2863.105.
-# The stock camera executes /mnt/hack.sh from the SD card.
-
 mkdir -p /tmp/sd
 mount /dev/mmcblk0p1 /tmp/sd
+
+if [ ! -e /tmp/sd/hack ]; then
+ touch /tmp/sd/hack
+fi
 
 if [ ! -e /tmp/sd/anyka_ipc ]; then
  cp /usr/bin/anyka_ipc /tmp/sd

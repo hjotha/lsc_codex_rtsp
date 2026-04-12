@@ -15,6 +15,8 @@ It was validated against:
 
 The bootstrap now checks that md5 before patching. If the running `anyka_ipc` does not match, it refuses to apply the hack.
 
+This bundle now mirrors the known-good SD backup layout more closely than the earlier experimental minimal bundle.
+
 ## What this bundle assumes
 
 This bundle is meant to be copied onto a blank SD card root for the tested stock firmware path.
@@ -45,6 +47,10 @@ That means copying:
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
+- `busybox`
+- `httpd.conf`
+- `index.html`
+- `cgi-bin/`
 
 ## What happens after that
 
@@ -63,7 +69,10 @@ That is the beginner path.
 It is a host-side helper for people who already have a working hacked SD setup and want to patch it remotely over telnet.
 
 Keep both `hack` and `hack.sh` on the card.
-On the tested camera, that is the safest compatibility setup.
+On the tested camera, the known-good setup used:
+
+- `hack` as a zero-byte sentinel file
+- `hack.sh` as the real startup script
 
 ## Safety behavior
 
@@ -84,3 +93,9 @@ If you are intentionally testing another firmware and want to bypass the MD5 gua
 - `vendor_rtsp_boot.allow_unsupported`
 
 That override is for research only, not for the documented safe path.
+
+## Validation note
+
+The repository now matches the known-good backup layout much more closely.
+
+That is the strongest evidence-based packaging we currently have, but any new blank-card flow should still be re-validated on hardware after copying the files.

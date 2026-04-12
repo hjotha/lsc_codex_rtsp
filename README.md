@@ -92,7 +92,12 @@ So beginners can use either:
 - `sdcard/`
 
 On the tested camera, keeping both `hack` and `hack.sh` on the SD card is the safest path.
-The repository now ships both.
+The known-good backup used:
+
+- `hack` as a zero-byte sentinel
+- `hack.sh` as the actual startup script
+
+The repository now follows that layout again.
 
 This path is intentionally gated to the tested stock `anyka_ipc` build:
 
@@ -191,6 +196,10 @@ Current active files:
 - `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
+- `sdcard/busybox`
+- `sdcard/httpd.conf`
+- `sdcard/index.html`
+- `sdcard/cgi-bin/`
 - `sdcard/rtsp_kick`
 - `sdcard/vendor_rtsp_boot.sh`
 - `sdcard/vendor_rtsp_boot.md5`
@@ -255,8 +264,13 @@ On the tested camera, the stock firmware executes `/mnt/hack.sh` from the SD car
 
 This repository now includes:
 
+- `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
+- `sdcard/busybox`
+- `sdcard/httpd.conf`
+- `sdcard/index.html`
+- `sdcard/cgi-bin/`
 - `sdcard/vendor_rtsp_boot.sh`
   an idempotent SD-side helper that:
   copies `rtsp_kick` from SD into `/tmp`
@@ -329,6 +343,11 @@ Expected result:
 - `rtsp://CAMERA_IP:88/videoMain` plays
 - `rtsp://CAMERA_IP:89/videoSub` plays
 - `554` and `8554` remain closed unless you intentionally add another proxy later
+
+Important note:
+
+- the repository now mirrors the known-good SD backup layout more closely
+- that includes the zero-byte `hack` sentinel and the original `hack.sh`/`custom.sh` pair from the working card
 
 ## Start the vendor RTSP server
 

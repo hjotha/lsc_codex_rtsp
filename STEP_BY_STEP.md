@@ -54,9 +54,13 @@ That script is only for advanced remote installation over telnet from a Linux ho
 The SD bootstrap checks the running stock binary hash before patching.
 If the camera is not running the tested `V3.2863.105` stock build, it refuses to apply the hack.
 
+This bundle is now based on the real SD backup that was known to work on the tested camera.
+
 ## Files to copy
 
-Copy these files to the root of the microSD card:
+Copy everything from the bundle directory to the root of the microSD card.
+
+The most important files are:
 
 - `hack`
 - `hack.sh`
@@ -64,6 +68,10 @@ Copy these files to the root of the microSD card:
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
+- `busybox`
+- `httpd.conf`
+- `index.html`
+- `cgi-bin/`
 
 They are already collected here:
 
@@ -71,7 +79,10 @@ They are already collected here:
 - `sdcard/`
 
 Keep both `hack` and `hack.sh` on the card.
-On the tested camera, that is the safest compatibility setup.
+On the tested camera, the known-good setup used:
+
+- `hack` as a zero-byte sentinel file
+- `hack.sh` as the real startup script
 
 ## What happens on boot
 
@@ -158,5 +169,9 @@ Delete these files from the SD card root:
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
+- `busybox`
+- `httpd.conf`
+- `index.html`
+- `cgi-bin/`
 
 Then reboot the camera without the hacked SD contents.

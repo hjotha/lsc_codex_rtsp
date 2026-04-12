@@ -194,8 +194,17 @@ That bundle includes:
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
+- `busybox`
+- `httpd.conf`
+- `index.html`
+- `cgi-bin/`
 
-On the tested camera, keeping both `hack` and `hack.sh` on the card is the safest compatibility choice.
+On the tested camera, the known-good backup used:
+
+- `hack` as a zero-byte sentinel
+- `hack.sh` as the actual startup script
+
+The repository now follows that layout again.
 
 ## Commands
 

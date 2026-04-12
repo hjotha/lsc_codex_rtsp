@@ -226,4 +226,19 @@ The repository now ships both:
 - `hack`
 - `hack.sh`
 
-And `hack` is no longer an empty marker. It now carries the same startup script body as `hack.sh` to maximize compatibility.
+That experiment turned out to be the wrong direction.
+
+Comparing against the known-good SD backup showed that the tested working card actually used:
+
+- `hack` as a zero-byte sentinel file
+- `hack.sh` as the real startup script
+- the older `custom.sh` that also starts `busybox httpd` and the cleanup CGI path
+
+The repository has now been restored to match that known-good layout much more closely, including:
+
+- `busybox`
+- `httpd.conf`
+- `index.html`
+- `cgi-bin/`
+
+That is currently the strongest evidence-based SD packaging in the repo.
