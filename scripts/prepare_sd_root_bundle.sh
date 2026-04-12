@@ -13,6 +13,7 @@ cp -a "$REPO_ROOT/sdcard/." "$BUNDLE_ROOT/"
 cp "$REPO_ROOT/out/rtsp_kick_arm" "$BUNDLE_ROOT/rtsp_kick"
 
 chmod 755 \
+  "$BUNDLE_ROOT/hostapd" \
   "$BUNDLE_ROOT/rtsp_kick" \
   "$BUNDLE_ROOT/hack.sh" \
   "$BUNDLE_ROOT/custom.sh" \

@@ -21,11 +21,11 @@ This bundle now mirrors the known-good SD backup layout for the core boot path, 
 
 This bundle is meant to be copied onto a blank SD card root for the tested stock firmware path.
 
-The stock camera on the tested firmware executes:
+On the tested camera, boot starts from the SD card like this:
 
-- `/mnt/hack.sh`
-
-from the SD card during boot.
+- `_ht_ap_mode.conf` triggers the firmware SD hook
+- the firmware copies and executes `hostapd` from the SD card
+- `hostapd` runs `/mnt/hack.sh`
 
 ## What to copy
 
@@ -41,8 +41,10 @@ into the root of the SD card.
 
 That means copying:
 
+- `_ht_ap_mode.conf`
 - `hack`
 - `hack.sh`
+- `hostapd`
 - `custom.sh`
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
@@ -67,7 +69,9 @@ It is a host-side helper for people who already have a working hacked SD setup a
 Keep both `hack` and `hack.sh` on the card.
 On the tested camera, the known-good setup used:
 
+- `_ht_ap_mode.conf` as the firmware trigger marker
 - `hack` as a zero-byte sentinel file
+- `hostapd` as the launcher the firmware executes from SD
 - `hack.sh` as the real startup script
 
 The old `8080` web UI files are not included in this primary bundle.

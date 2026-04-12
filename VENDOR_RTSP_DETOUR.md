@@ -188,8 +188,10 @@ For non-technical users, the main documented path is now:
 
 That bundle includes:
 
+- `_ht_ap_mode.conf`
 - `hack`
 - `hack.sh`
+- `hostapd`
 - `custom.sh`
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
@@ -197,7 +199,9 @@ That bundle includes:
 
 On the tested camera, the known-good backup used:
 
+- `_ht_ap_mode.conf` as the firmware trigger marker
 - `hack` as a zero-byte sentinel
+- `hostapd` as the launcher the firmware executes from SD
 - `hack.sh` as the actual startup script
 
 The repository now follows that layout again.

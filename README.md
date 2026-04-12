@@ -94,7 +94,9 @@ So beginners can use either:
 On the tested camera, keeping both `hack` and `hack.sh` on the SD card is the safest path.
 The known-good backup used:
 
+- `_ht_ap_mode.conf` as the firmware trigger marker
 - `hack` as a zero-byte sentinel
+- `hostapd` as the launcher the firmware executes from SD
 - `hack.sh` as the actual startup script
 
 The repository now follows that layout again.
@@ -193,8 +195,10 @@ So the current recommendation remains:
 Current active files:
 
 - `src/rtsp_kick.c`
+- `sdcard/_ht_ap_mode.conf`
 - `sdcard/hack`
 - `sdcard/hack.sh`
+- `sdcard/hostapd`
 - `sdcard/custom.sh`
 - `sdcard/rtsp_kick`
 - `sdcard/vendor_rtsp_boot.sh`
@@ -256,7 +260,7 @@ The upload is volatile by design:
 
 ## Boot automation
 
-On the tested camera, the stock firmware executes `/mnt/hack.sh` from the SD card, and that script runs `/tmp/sd/custom.sh` every 10 seconds. That makes boot persistence possible without replacing the stock firmware binary.
+On the tested camera, the boot path starts when `_ht_ap_mode.conf` triggers the SD `hostapd` launcher. That launcher runs `/mnt/hack.sh`, and `hack.sh` then runs `/tmp/sd/custom.sh` every 10 seconds. That makes boot persistence possible without replacing the stock firmware binary.
 
 This repository now includes:
 

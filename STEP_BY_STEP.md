@@ -62,8 +62,10 @@ Copy everything from the bundle directory to the root of the microSD card.
 
 The most important files are:
 
+- `_ht_ap_mode.conf`
 - `hack`
 - `hack.sh`
+- `hostapd`
 - `custom.sh`
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
@@ -77,7 +79,9 @@ They are already collected here:
 Keep both `hack` and `hack.sh` on the card.
 On the tested camera, the known-good setup used:
 
+- `_ht_ap_mode.conf` as the firmware trigger marker
 - `hack` as a zero-byte sentinel file
+- `hostapd` as the launcher the firmware executes from SD
 - `hack.sh` as the real startup script
 
 The optional old `8080` web UI files are no longer part of the main bundle.
@@ -86,7 +90,9 @@ The optional old `8080` web UI files are no longer part of the main bundle.
 
 After the power cycle:
 
-- the stock firmware executes `/mnt/hack.sh` from the SD card
+- the stock firmware sees `_ht_ap_mode.conf` on the SD card
+- it copies and executes `hostapd` from the SD card
+- that launcher runs `/mnt/hack.sh`
 - `hack.sh` starts a loop that runs `/tmp/sd/custom.sh`
 - `vendor_rtsp_boot.sh` copies `rtsp_kick` into `/tmp`
 - it starts the stock vendor RTSP worker if needed

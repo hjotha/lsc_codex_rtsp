@@ -132,7 +132,10 @@ The most useful next tasks are:
 
 The tested camera already had a useful SD hack loop:
 
-- `/mnt/hack.sh` mounts the SD card
+- `_ht_ap_mode.conf` on the SD card triggers the firmware SD hook
+- the firmware copies and executes `hostapd` from the SD card
+- that launcher runs `/mnt/hack.sh`
+- `hack.sh` mounts the SD card on `/tmp/sd`
 - then it runs `/tmp/sd/custom.sh` every 10 seconds
 
 That means the clean persistence path is:
@@ -143,8 +146,10 @@ That means the clean persistence path is:
 
 This repo now includes that path:
 
+- `sdcard/_ht_ap_mode.conf`
 - `sdcard/hack`
 - `sdcard/hack.sh`
+- `sdcard/hostapd`
 - `sdcard/custom.sh`
 - `sdcard/vendor_rtsp_boot.sh`
 - `sdcard/vendor_rtsp_boot.md5`
@@ -198,8 +203,10 @@ The repository also now contains a simpler blank-card bundle:
 
 The key simplification was recognizing that the essential boot path only needs:
 
+- `_ht_ap_mode.conf`
 - `hack`
 - `hack.sh`
+- `hostapd`
 - `custom.sh`
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
@@ -223,16 +230,29 @@ That strongly suggests the tested firmware path is sensitive to the presence of 
 
 The repository now ships both:
 
+- `_ht_ap_mode.conf`
 - `hack`
 - `hack.sh`
+- `hostapd`
 
 That experiment turned out to be the wrong direction.
 
 Comparing against the known-good SD backup showed that the tested working card actually used:
 
+- `_ht_ap_mode.conf` as the firmware trigger marker
 - `hack` as a zero-byte sentinel file
+- `hostapd` as the launcher the firmware executes from SD
 - `hack.sh` as the real startup script
 - the older `custom.sh` that also starts `busybox httpd` and the cleanup CGI path
+
+Hardware re-validation then confirmed another regression trigger:
+
+- with `hack` present but without `_ht_ap_mode.conf` and `hostapd`, the camera still came back on Wi-Fi
+- `6668` was open
+- `24`, `88`, and `89` stayed closed
+
+That showed the tested firmware does not jump straight into `hack.sh` from SD by itself.
+It first needs the `_ht_ap_mode.conf` marker and the SD `hostapd` launcher to enter the bootstrap path.
 
 After dependency review, the old `8080` web UI files were removed from the primary bundle again because:
 
