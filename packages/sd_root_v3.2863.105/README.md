@@ -15,7 +15,7 @@ It was validated against:
 
 The bootstrap now checks that md5 before patching. If the running `anyka_ipc` does not match, it refuses to apply the hack.
 
-This bundle now mirrors the known-good SD backup layout more closely than the earlier experimental minimal bundle.
+This bundle now mirrors the known-good SD backup layout for the core boot path, but it intentionally leaves out the old optional `8080` web UI files because the RTSP/Tuya coexistence path does not use them.
 
 ## What this bundle assumes
 
@@ -47,10 +47,6 @@ That means copying:
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
-- `busybox`
-- `httpd.conf`
-- `index.html`
-- `cgi-bin/`
 
 ## What happens after that
 
@@ -74,6 +70,8 @@ On the tested camera, the known-good setup used:
 - `hack` as a zero-byte sentinel file
 - `hack.sh` as the real startup script
 
+The old `8080` web UI files are not included in this primary bundle.
+
 ## Safety behavior
 
 If the running stock `anyka_ipc` binary hash does not match the tested value, the bootstrap logs the mismatch and refuses to patch.
@@ -96,6 +94,6 @@ That override is for research only, not for the documented safe path.
 
 ## Validation note
 
-The repository now matches the known-good backup layout much more closely.
+The repository now matches the known-good backup layout for the core boot path much more closely.
 
-That is the strongest evidence-based packaging we currently have, but any new blank-card flow should still be re-validated on hardware after copying the files.
+That is the strongest evidence-based packaging we currently have, but any trimmed bundle should still be re-validated on hardware after copying the files.

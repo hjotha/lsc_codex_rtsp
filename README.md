@@ -196,10 +196,6 @@ Current active files:
 - `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
-- `sdcard/busybox`
-- `sdcard/httpd.conf`
-- `sdcard/index.html`
-- `sdcard/cgi-bin/`
 - `sdcard/rtsp_kick`
 - `sdcard/vendor_rtsp_boot.sh`
 - `sdcard/vendor_rtsp_boot.md5`
@@ -267,10 +263,6 @@ This repository now includes:
 - `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
-- `sdcard/busybox`
-- `sdcard/httpd.conf`
-- `sdcard/index.html`
-- `sdcard/cgi-bin/`
 - `sdcard/vendor_rtsp_boot.sh`
   an idempotent SD-side helper that:
   copies `rtsp_kick` from SD into `/tmp`
@@ -348,6 +340,7 @@ Important note:
 
 - the repository now mirrors the known-good SD backup layout more closely
 - that includes the zero-byte `hack` sentinel and the original `hack.sh`/`custom.sh` pair from the working card
+- the optional `8080` web UI files were removed from the primary bundle because the RTSP/Tuya coexistence path does not use them
 
 ## Start the vendor RTSP server
 

@@ -68,10 +68,6 @@ The most important files are:
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
-- `busybox`
-- `httpd.conf`
-- `index.html`
-- `cgi-bin/`
 
 They are already collected here:
 
@@ -83,6 +79,8 @@ On the tested camera, the known-good setup used:
 
 - `hack` as a zero-byte sentinel file
 - `hack.sh` as the real startup script
+
+The optional old `8080` web UI files are no longer part of the main bundle.
 
 ## What happens on boot
 
@@ -169,9 +167,5 @@ Delete these files from the SD card root:
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
-- `busybox`
-- `httpd.conf`
-- `index.html`
-- `cgi-bin/`
 
 Then reboot the camera without the hacked SD contents.

@@ -194,10 +194,6 @@ That bundle includes:
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
-- `busybox`
-- `httpd.conf`
-- `index.html`
-- `cgi-bin/`
 
 On the tested camera, the known-good backup used:
 
@@ -205,6 +201,8 @@ On the tested camera, the known-good backup used:
 - `hack.sh` as the actual startup script
 
 The repository now follows that layout again.
+
+The old optional `8080` web UI files are not part of the primary RTSP bundle.
 
 ## Commands
 

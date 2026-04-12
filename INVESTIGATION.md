@@ -234,11 +234,13 @@ Comparing against the known-good SD backup showed that the tested working card a
 - `hack.sh` as the real startup script
 - the older `custom.sh` that also starts `busybox httpd` and the cleanup CGI path
 
-The repository has now been restored to match that known-good layout much more closely, including:
+After dependency review, the old `8080` web UI files were removed from the primary bundle again because:
 
-- `busybox`
-- `httpd.conf`
-- `index.html`
-- `cgi-bin/`
+- only `custom.sh` referenced them
+- `vendor_rtsp_boot.sh` does not use them
+- `rtsp_kick` does not use them
+- the Tuya coexistence path does not depend on them
 
-That is currently the strongest evidence-based SD packaging in the repo.
+That trims the SD bundle back to the RTSP/Tuya path itself.
+
+That is currently the strongest evidence-based minimal SD packaging in the repo, but it should still be re-validated on hardware.

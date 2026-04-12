@@ -16,11 +16,6 @@ chmod 755 \
   "$BUNDLE_ROOT/rtsp_kick" \
   "$BUNDLE_ROOT/hack.sh" \
   "$BUNDLE_ROOT/custom.sh" \
-  "$BUNDLE_ROOT/vendor_rtsp_boot.sh" \
-  "$BUNDLE_ROOT/busybox"
-
-if [ -d "$BUNDLE_ROOT/cgi-bin" ]; then
-  find "$BUNDLE_ROOT/cgi-bin" -type f -exec chmod 755 {} +
-fi
+  "$BUNDLE_ROOT/vendor_rtsp_boot.sh"
 
 printf 'Prepared SD root bundle in %s\n' "$BUNDLE_ROOT"
