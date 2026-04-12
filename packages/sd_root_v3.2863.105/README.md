@@ -76,6 +76,20 @@ On the tested camera, the known-good setup used:
 
 The old `8080` web UI files are not included in this primary bundle.
 
+This tracked bundle is generated from:
+
+- `sdcard/`
+- the current ARM build in `out/rtsp_kick_arm`
+
+When `src/rtsp_kick.c` changes, refresh it with:
+
+- `cp out/rtsp_kick_arm sdcard/rtsp_kick`
+- `bash scripts/prepare_sd_root_bundle.sh`
+
+The SD bootstrap is no longer strictly one-shot.
+After a successful boot, the existing `custom.sh` loop keeps calling `vendor_rtsp_boot.sh` as a lightweight watchdog.
+If `anyka_ipc` restarts or ports `88` and `89` disappear later, it retries the RTSP detour with backoff.
+
 ## Safety behavior
 
 If the running stock `anyka_ipc` binary hash does not match the tested value, the bootstrap logs the mismatch and refuses to patch.

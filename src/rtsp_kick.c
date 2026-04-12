@@ -33,8 +33,23 @@
 #define DEFAULT_EXPECTED_VIDEO_CB1_VADDR 0x000898f4UL
 
 #define MAX_REMOTE_STACK_WORDS 8
-#define VIDEO_CHAIN_STUB_WORDS 28
+#define VIDEO_CHAIN_STUB_WORDS 26
+/* Two stubs = 2 * 26 * 4 = 208 bytes.  The remaining 48 bytes of padding
+ * are reserved for the cacheflush trampoline (16 bytes) and cache-line
+ * alignment. */
 #define VIDEO_CHAIN_ALLOC_SIZE 0x100UL
+
+/* EABI cacheflush trampoline: 4 ARM instructions written into the padding
+ * area after the two stubs.  Called via remote_call with r0 = start,
+ * r1 = end, r2 = 0.  This ensures the I-cache sees the newly written
+ * stub code on ARM cores with separate I/D caches. */
+#define CACHEFLUSH_TRAMPOLINE_WORDS 4
+static const uint32_t cacheflush_trampoline[CACHEFLUSH_TRAMPOLINE_WORDS] = {
+    0xe59f7004, /* ldr r7, [pc, #4]   ; load __ARM_NR_cacheflush */
+    0xef000000, /* svc #0             ; invoke kernel cacheflush   */
+    0xe12fff1e, /* bx lr              ; return to trap address     */
+    0x000f0002, /* .word 0x000f0002   ; __ARM_NR_cacheflush        */
+};
 
 enum {
     ARM_R0 = 0,
@@ -129,6 +144,17 @@ static int parse_ulong_arg(const char *text, unsigned long *value)
 {
     char *end = NULL;
     unsigned long parsed = 0;
+    const char *p = text;
+
+    /* Skip leading whitespace to find the sign character.
+     * strtoul silently accepts "-1" and returns ULONG_MAX, which
+     * would be a confusing silent misparse for address arguments. */
+    while (*p != '\0' && isspace((unsigned char)*p)) {
+        p++;
+    }
+    if (*p == '-') {
+        return -1;
+    }
 
     errno = 0;
     parsed = strtoul(text, &end, 0);
@@ -275,13 +301,14 @@ static int find_lowest_exe_map(pid_t pid, const char *exe_path, unsigned long *m
     return 0;
 }
 
-static int resolve_runtime_vaddr(pid_t pid,
-                                 unsigned long vaddr,
-                                 unsigned long *runtime_addr,
-                                 uint16_t *elf_type_out,
-                                 char *exe_path,
-                                 size_t exe_path_size,
-                                 unsigned long *map_base_out)
+/* Resolve the ELF base once (reads /proc/pid/exe and /proc/pid/maps)
+ * and return the map_base and elf_type.  All subsequent vaddr-to-runtime
+ * translations use apply_base() which is pure arithmetic. */
+static int resolve_base(pid_t pid,
+                        uint16_t *elf_type_out,
+                        char *exe_path,
+                        size_t exe_path_size,
+                        unsigned long *map_base_out)
 {
     uint16_t elf_type = 0;
     unsigned long map_base = 0;
@@ -294,13 +321,11 @@ static int resolve_runtime_vaddr(pid_t pid,
     }
 
     if (elf_type == ET_EXEC) {
-        *runtime_addr = vaddr;
         *map_base_out = 0;
     } else if (elf_type == ET_DYN) {
         if (find_lowest_exe_map(pid, exe_path, &map_base) != 0) {
             return -1;
         }
-        *runtime_addr = map_base + vaddr;
         *map_base_out = map_base;
     } else {
         errno = ENOTSUP;
@@ -311,17 +336,55 @@ static int resolve_runtime_vaddr(pid_t pid,
     return 0;
 }
 
+static unsigned long apply_base(uint16_t elf_type,
+                                unsigned long vaddr,
+                                unsigned long map_base)
+{
+    if (elf_type == ET_EXEC) {
+        return vaddr;
+    }
+    return map_base + vaddr;
+}
+
+#define WAIT_TIMEOUT_SECONDS 5
+
+static volatile sig_atomic_t wait_timed_out = 0;
+
+static void alarm_handler(int signo)
+{
+    (void)signo;
+    wait_timed_out = 1;
+}
+
 static int wait_for_stop(pid_t tid, int *status)
 {
+    struct sigaction sa;
+    struct sigaction old_sa;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = alarm_handler;
+    sa.sa_flags = 0;  /* do NOT set SA_RESTART — we need EINTR */
+    sigaction(SIGALRM, &sa, &old_sa);
+
+    wait_timed_out = 0;
+    alarm(WAIT_TIMEOUT_SECONDS);
+
     for (;;) {
         pid_t waited = waitpid(tid, status, __WALL);
         if (waited < 0) {
-            if (errno == EINTR) {
+            if (errno == EINTR && !wait_timed_out) {
                 continue;
+            }
+            alarm(0);
+            sigaction(SIGALRM, &old_sa, NULL);
+            if (wait_timed_out) {
+                errno = ETIMEDOUT;
             }
             return -1;
         }
         if (waited == tid) {
+            alarm(0);
+            sigaction(SIGALRM, &old_sa, NULL);
             return 0;
         }
     }
@@ -509,40 +572,41 @@ static void build_video_chain_stub(uint32_t *words,
                                    unsigned long channel_id)
 {
     static const uint32_t template_words[VIDEO_CHAIN_STUB_WORDS] = {
-        0xe92d41f0, /* push {r4-r8, lr} */
-        0xe59d7018, /* ldr r7, [sp, #24] */
-        0xe59d801c, /* ldr r8, [sp, #28] */
-        0xe1a04000, /* mov r4, r0 */
-        0xe1a05001, /* mov r5, r1 */
-        0xe1a06002, /* mov r6, r2 */
-        0xe24dd008, /* sub sp, sp, #8 */
-        0xe58d7000, /* str r7, [sp] */
-        0xe58d8004, /* str r8, [sp, #4] */
-        0xe1a00004, /* mov r0, r4 */
-        0xe1a01005, /* mov r1, r5 */
-        0xe1a02006, /* mov r2, r6 */
-        0xe59fc030, /* ldr ip, [pc, #48] */
-        0xe12fff3c, /* blx ip */
-        0xe28dd008, /* add sp, sp, #8 */
-        0xe24dd008, /* sub sp, sp, #8 */
-        0xe58d7000, /* str r7, [sp] */
-        0xe58d8004, /* str r8, [sp, #4] */
-        0xe3a00000, /* mov r0, #channel */
-        0xe1a01004, /* mov r1, r4 */
-        0xe1a02005, /* mov r2, r5 */
-        0xe59fc010, /* ldr ip, [pc, #16] */
-        0xe12fff3c, /* blx ip */
-        0xe28dd008, /* add sp, sp, #8 */
-        0xe8bd41f0, /* pop {r4-r8, lr} */
-        0xe12fff1e, /* bx lr */
-        0x00000000, /* literal: original callback */
-        0x00000000, /* literal: ht_rtsp_send_video_frame */
+        0xe92d41f0, /* [0]  push {r4-r8, lr}                          */
+        0xe59d7018, /* [1]  ldr r7, [sp, #24]   ; arg5 from caller    */
+        0xe59d801c, /* [2]  ldr r8, [sp, #28]   ; arg6 from caller    */
+        0xe1a04000, /* [3]  mov r4, r0           ; save arg1           */
+        0xe1a05001, /* [4]  mov r5, r1           ; save arg2           */
+        0xe1a06002, /* [5]  mov r6, r2           ; save arg3           */
+        0xe24dd008, /* [6]  sub sp, sp, #8       ; room for 2 stk args */
+        0xe58d7000, /* [7]  str r7, [sp]         ; push arg5           */
+        0xe58d8004, /* [8]  str r8, [sp, #4]     ; push arg6           */
+        0xe1a00004, /* [9]  mov r0, r4           ; restore arg1        */
+        0xe1a01005, /* [10] mov r1, r5           ; restore arg2        */
+        0xe1a02006, /* [11] mov r2, r6           ; restore arg3        */
+        0xe59fc028, /* [12] ldr ip, [pc, #40]    ; =original_callback  */
+        0xe12fff3c, /* [13] blx ip               ; call original cb    */
+        /* Stack args may have been clobbered by the callee, but r4-r8
+         * are callee-saved so our saved values survive.  Re-store the
+         * stack arguments for the second call (sp frame stays as-is). */
+        0xe58d7000, /* [14] str r7, [sp]         ; re-push arg5        */
+        0xe58d8004, /* [15] str r8, [sp, #4]     ; re-push arg6        */
+        0xe3a00000, /* [16] mov r0, #channel     ; patched at runtime  */
+        0xe1a01004, /* [17] mov r1, r4           ; original arg1       */
+        0xe1a02005, /* [18] mov r2, r5           ; original arg2       */
+        0xe59fc010, /* [19] ldr ip, [pc, #16]    ; =video_send_cb      */
+        0xe12fff3c, /* [20] blx ip               ; call rtsp send      */
+        0xe28dd008, /* [21] add sp, sp, #8       ; clean stack frame   */
+        0xe8bd41f0, /* [22] pop {r4-r8, lr}                            */
+        0xe12fff1e, /* [23] bx lr                                      */
+        0x00000000, /* [24] literal: original callback                 */
+        0x00000000, /* [25] literal: ht_rtsp_send_video_frame          */
     };
 
     memcpy(words, template_words, sizeof(template_words));
-    words[18] = 0xe3a00000U | (uint32_t)(channel_id & 0xffU);
-    words[26] = (uint32_t)original_callback;
-    words[27] = (uint32_t)video_send_callback;
+    words[16] = 0xe3a00000U | (uint32_t)(channel_id & 0xffU);
+    words[24] = (uint32_t)original_callback;
+    words[25] = (uint32_t)video_send_callback;
 }
 
 static int install_video_chain(const config_t *cfg,
@@ -634,6 +698,46 @@ static int install_video_chain(const config_t *cfg,
         }
     }
 
+    /* Write a cacheflush trampoline into the padding area after the two
+     * stubs and call it to ensure the I-cache sees the new code.  The
+     * kernel may already flush on PTRACE_POKEDATA for executable VMAs,
+     * but this makes the flush explicit and safe on all ARM kernels. */
+    {
+        unsigned long trampoline_addr = allocation +
+            2 * (unsigned long)(VIDEO_CHAIN_STUB_WORDS * sizeof(uint32_t));
+
+        for (i = 0; i < CACHEFLUSH_TRAMPOLINE_WORDS; ++i) {
+            if (poke_word(tid, trampoline_addr + (unsigned long)(i * sizeof(uint32_t)),
+                          cacheflush_trampoline[i]) != 0) {
+                perror("write cacheflush trampoline");
+                return -1;
+            }
+        }
+
+        if (remote_call(tid,
+                        trampoline_addr,
+                        cfg->trap_addr,
+                        allocation,
+                        allocation + 2 * (unsigned long)(VIDEO_CHAIN_STUB_WORDS * sizeof(uint32_t)),
+                        0,
+                        0,
+                        NULL,
+                        0,
+                        cfg->verbose,
+                        NULL) != 0) {
+            fprintf(stderr,
+                    "warning: cacheflush trampoline failed (stubs may still work on this kernel)\n");
+        }
+    }
+
+    /* Patch the callback slot pointers to redirect to the new stubs.
+     * Note: other threads in anyka_ipc are NOT stopped by our ptrace
+     * attach (only the attached tid is stopped).  There is a brief
+     * window between the two poke_word calls where slot0 points to the
+     * new stub while slot1 still points to the old callback.  In the
+     * worst case, one video frame on one channel goes through the old
+     * path during that window — no crash, just one frame without RTSP
+     * delivery. */
     if (poke_word(tid, slot0_runtime, stub0_addr) != 0) {
         perror("patch slot0");
         return -1;
@@ -789,99 +893,25 @@ int main(int argc, char **argv)
         return 2;
     }
 
+    /* Resolve the ELF base address once — this reads /proc/pid/exe and
+     * /proc/pid/maps a single time instead of once per address. */
+    if (resolve_base(cfg.tid, &elf_type, exe_path, sizeof(exe_path), &map_base) != 0) {
+        perror("resolve ELF base");
+        return 1;
+    }
+
     if (cfg.peek_mode) {
-        if (resolve_runtime_vaddr(cfg.tid,
-                                  cfg.peek_vaddr,
-                                  &peek_runtime,
-                                  &elf_type,
-                                  exe_path,
-                                  sizeof(exe_path),
-                                  &map_base) != 0) {
-            perror("resolve peek address");
-            return 1;
-        }
+        peek_runtime = apply_base(elf_type, cfg.peek_vaddr, map_base);
     } else {
-        if (resolve_runtime_vaddr(cfg.tid,
-                                  cfg.func_vaddr,
-                                  &func_runtime,
-                                  &elf_type,
-                                  exe_path,
-                                  sizeof(exe_path),
-                                  &map_base) != 0) {
-            perror("resolve func address");
-            return 1;
-        }
-        if (resolve_runtime_vaddr(cfg.tid,
-                                  cfg.guard_vaddr,
-                                  &guard_runtime,
-                                  &elf_type,
-                                  exe_path,
-                                  sizeof(exe_path),
-                                  &map_base) != 0) {
-            perror("resolve guard address");
-            return 1;
-        }
+        func_runtime  = apply_base(elf_type, cfg.func_vaddr, map_base);
+        guard_runtime = apply_base(elf_type, cfg.guard_vaddr, map_base);
         if (cfg.install_video_chain) {
-            if (resolve_runtime_vaddr(cfg.tid,
-                                      cfg.malloc_vaddr,
-                                      &malloc_runtime,
-                                      &elf_type,
-                                      exe_path,
-                                      sizeof(exe_path),
-                                      &map_base) != 0) {
-                perror("resolve malloc address");
-                return 1;
-            }
-            if (resolve_runtime_vaddr(cfg.tid,
-                                      cfg.video_send_vaddr,
-                                      &video_send_runtime,
-                                      &elf_type,
-                                      exe_path,
-                                      sizeof(exe_path),
-                                      &map_base) != 0) {
-                perror("resolve video send address");
-                return 1;
-            }
-            if (resolve_runtime_vaddr(cfg.tid,
-                                      cfg.video_slot0_vaddr,
-                                      &video_slot0_runtime,
-                                      &elf_type,
-                                      exe_path,
-                                      sizeof(exe_path),
-                                      &map_base) != 0) {
-                perror("resolve video slot 0 address");
-                return 1;
-            }
-            if (resolve_runtime_vaddr(cfg.tid,
-                                      cfg.video_slot1_vaddr,
-                                      &video_slot1_runtime,
-                                      &elf_type,
-                                      exe_path,
-                                      sizeof(exe_path),
-                                      &map_base) != 0) {
-                perror("resolve video slot 1 address");
-                return 1;
-            }
-            if (resolve_runtime_vaddr(cfg.tid,
-                                      cfg.expected_video_cb0_vaddr,
-                                      &expected_video_cb0_runtime,
-                                      &elf_type,
-                                      exe_path,
-                                      sizeof(exe_path),
-                                      &map_base) != 0) {
-                perror("resolve expected video cb0 address");
-                return 1;
-            }
-            if (resolve_runtime_vaddr(cfg.tid,
-                                      cfg.expected_video_cb1_vaddr,
-                                      &expected_video_cb1_runtime,
-                                      &elf_type,
-                                      exe_path,
-                                      sizeof(exe_path),
-                                      &map_base) != 0) {
-                perror("resolve expected video cb1 address");
-                return 1;
-            }
+            malloc_runtime             = apply_base(elf_type, cfg.malloc_vaddr, map_base);
+            video_send_runtime         = apply_base(elf_type, cfg.video_send_vaddr, map_base);
+            video_slot0_runtime        = apply_base(elf_type, cfg.video_slot0_vaddr, map_base);
+            video_slot1_runtime        = apply_base(elf_type, cfg.video_slot1_vaddr, map_base);
+            expected_video_cb0_runtime = apply_base(elf_type, cfg.expected_video_cb0_vaddr, map_base);
+            expected_video_cb1_runtime = apply_base(elf_type, cfg.expected_video_cb1_vaddr, map_base);
         }
     }
 

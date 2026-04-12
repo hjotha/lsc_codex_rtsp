@@ -101,6 +101,12 @@ After the power cycle:
   `/tmp/vendor_rtsp_boot.done`
   `/tmp/vendor_rtsp_boot.log`
 
+After the first success, the same `custom.sh` loop also acts as a lightweight watchdog:
+
+- if `anyka_ipc` restarts with a new PID, the bootstrap re-arms the RTSP detour
+- if ports `88` and `89` disappear later, it retries the detour with backoff
+- if ports stay healthy, it stays idle
+
 One practical detail is normal:
 
 - the first boot attempt can happen too early

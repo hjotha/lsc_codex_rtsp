@@ -264,3 +264,31 @@ After dependency review, the old `8080` web UI files were removed from the prima
 That trims the SD bundle back to the RTSP/Tuya path itself.
 
 That is currently the strongest evidence-based minimal SD packaging in the repo, but it should still be re-validated on hardware.
+
+## Addendum 2026-04-12: watchdog review and bundle sync
+
+The next review pass focused on whether the newer watchdog and `rtsp_kick` changes had broken the working path.
+
+The main findings were:
+
+- the watchdog logic itself was valid
+- the healthy steady-state path still did unnecessary MD5 checks before exiting, which caused repetitive `confirmed supported anyka_ipc md5=...` log spam
+- the freshly rebuilt `out/rtsp_kick_arm` was no longer the same binary as the tracked `sdcard/rtsp_kick` and `packages/sd_root_v3.2863.105/root/rtsp_kick`
+
+The repository was then updated so that:
+
+- `vendor_rtsp_boot.sh` exits early on the healthy `STATE_PATH + ports 88/89 up` path before running the MD5 guard again
+- the shell tests cover watchdog recovery, backoff, and the healthy steady-state no-op path
+- `sdcard/rtsp_kick` and `packages/sd_root_v3.2863.105/root/rtsp_kick` were refreshed from the current ARM build
+
+The rebuilt ARM binary used for that validation had md5:
+
+- `eeb94063bf56a5db17c64d766b4e9a75`
+
+Hardware re-validation on camera `192.168.1.126` then confirmed:
+
+- the updated `vendor_rtsp_boot.sh` and `rtsp_kick` were uploaded to `/tmp/sd`
+- a reboot brought ports `88`, `89`, and `24` back cleanly
+- the cold-boot log again showed `copied rtsp_kick from SD to /tmp`, `starting stock RTSP worker`, `installing video callback chain`, and `vendor RTSP bootstrap finished successfully`
+- both `rtsp://192.168.1.126:88/videoMain` and `rtsp://192.168.1.126:89/videoSub` produced RTP packets after the reboot
+- post-boot process sampling still showed `anyka_ipc=1`, `hack=1`, `telnetd=2`, and no persistent `rtsp_kick` process

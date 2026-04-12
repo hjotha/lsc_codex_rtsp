@@ -212,6 +212,13 @@ Current active files:
 - `scripts/deploy_rtsp_kick.sh`
 - `tools/telnet_exec.py`
 - `tools/telnet_upload_file.py`
+
+Two tracked binary copies are intentional:
+
+- `sdcard/rtsp_kick`
+  the SD-ready copy of the current ARM build
+- `packages/sd_root_v3.2863.105/root/rtsp_kick`
+  the beginner bundle copy prepared from `sdcard/`
 - `tools/rtsp_probe.py`
 - `tools/rtsp_probe_windows.ps1`
 - `VENDOR_RTSP_DETOUR.md`
@@ -240,6 +247,13 @@ out/rtsp_kick_arm
 ```
 
 The build script first tries the old Anyka toolchain and falls back to `arm-linux-gnueabi-gcc` if needed.
+
+After changing `src/rtsp_kick.c`, also sync the tracked bundle copies:
+
+```bash
+cp out/rtsp_kick_arm sdcard/rtsp_kick
+bash scripts/prepare_sd_root_bundle.sh
+```
 
 ## Deploy to the camera
 
@@ -296,6 +310,16 @@ What was observed on the validated cold boot:
 - that early attempt may log a temporary `Protocol error` or see null callback slots
 - the next `custom.sh` retry about 10 seconds later succeeds cleanly
 - once the callbacks match the expected Tuya wrappers, the chain is installed and `/tmp/vendor_rtsp_boot.done` is created
+
+The SD bootstrap now keeps using that same `custom.sh` loop as a lightweight watchdog.
+If `anyka_ipc` restarts or if ports `88` and `89` disappear later in the same boot, `vendor_rtsp_boot.sh` attempts to re-arm the detour with backoff instead of staying permanently idle after the first success.
+
+Hardware re-validation on `2026-04-12` also confirmed that after rebuilding and redeploying the current `rtsp_kick`, a clean reboot still:
+
+- copied `rtsp_kick` from SD into `/tmp`
+- started the stock RTSP worker
+- installed the callback chain
+- brought `videoMain` on `88` and `videoSub` on `89` back with RTP packets visible from the host
 
 ## Simple step-by-step
 

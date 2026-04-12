@@ -3,11 +3,13 @@
 LOG_PATH="/tmp/vendor_rtsp_boot.log"
 STATE_PATH="/tmp/vendor_rtsp_boot.done"
 UNSUPPORTED_PATH="/tmp/vendor_rtsp_boot.unsupported"
+LAST_ATTEMPT_PATH="/tmp/vendor_rtsp_boot.last_attempt"
 TMP_KICK="/tmp/rtsp_kick"
 SD_KICK="/tmp/sd/rtsp_kick"
 EXPECTED_MD5_FILE="/tmp/sd/vendor_rtsp_boot.md5"
 DEFAULT_EXPECTED_MD5="c31358a8f598c56073720e96c004fa9c"
 ALLOW_UNSUPPORTED_MARKER="/tmp/sd/vendor_rtsp_boot.allow_unsupported"
+MIN_RETRY_SECONDS=30
 
 log_line() {
     echo "[$(date +%Y-%m-%d\ %H:%M:%S)] $*" >> "$LOG_PATH"
@@ -70,8 +72,70 @@ check_supported_binary() {
 }
 
 ports_ready() {
-    netstat -ltn 2>/dev/null | grep -q ':88 ' &&
-    netstat -ltn 2>/dev/null | grep -q ':89 '
+    local out
+    out="$(netstat -ltn 2>/dev/null)"
+    echo "$out" | grep -q ':88 ' && echo "$out" | grep -q ':89 '
+}
+
+read_state_pid() {
+    if [ -r "$STATE_PATH" ]; then
+        sed -n '1{s/[^0-9].*$//;p;q;}' "$STATE_PATH"
+    fi
+}
+
+mark_state() {
+    local pid="$1"
+
+    echo "$pid" > "$STATE_PATH"
+}
+
+current_epoch() {
+    local now=""
+
+    now="$(date +%s 2>/dev/null)"
+    case "$now" in
+        ''|*[!0-9]*)
+            echo 0
+            ;;
+        *)
+            echo "$now"
+            ;;
+    esac
+}
+
+retry_allowed() {
+    local now=""
+    local last=""
+
+    now="$(current_epoch)"
+    if [ "$now" -le 0 ]; then
+        return 0
+    fi
+    if [ ! -r "$LAST_ATTEMPT_PATH" ]; then
+        return 0
+    fi
+
+    last="$(sed -n '1{s/[^0-9].*$//;p;q;}' "$LAST_ATTEMPT_PATH")"
+    case "$last" in
+        ''|*[!0-9]*)
+            return 0
+            ;;
+    esac
+
+    if [ $((now - last)) -lt "$MIN_RETRY_SECONDS" ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+note_attempt() {
+    local now=""
+
+    now="$(current_epoch)"
+    if [ "$now" -gt 0 ]; then
+        echo "$now" > "$LAST_ATTEMPT_PATH"
+    fi
 }
 
 ensure_rtsp_kick() {
@@ -90,8 +154,10 @@ ensure_rtsp_kick() {
 
 main() {
     PID=""
+    PREV_PID=""
+    RECOVERY_MODE=0
 
-    if [ -e "$STATE_PATH" ] || [ -e "$UNSUPPORTED_PATH" ]; then
+    if [ -e "$UNSUPPORTED_PATH" ]; then
         exit 0
     fi
 
@@ -103,25 +169,47 @@ main() {
         exit 0
     fi
 
+    PREV_PID="$(read_state_pid)"
+    if [ -e "$STATE_PATH" ]; then
+        if [ -n "$PREV_PID" ] && [ "$PREV_PID" != "$PID" ]; then
+            RECOVERY_MODE=1
+            log_line "anyka_ipc pid changed from $PREV_PID to $PID; re-arming vendor RTSP bootstrap"
+        elif ports_ready; then
+            exit 0
+        else
+            RECOVERY_MODE=1
+            log_line "ports 88 and 89 disappeared after earlier success; attempting RTSP recovery for pid $PID"
+        fi
+    fi
+
     check_supported_binary "$PID" || exit 0
+
+    if ! retry_allowed; then
+        exit 0
+    fi
+    note_attempt
 
     if ! ports_ready; then
         log_line "starting stock RTSP worker for pid $PID"
-        "$TMP_KICK" "$PID" --verbose >> "$LOG_PATH" 2>&1 || true
+        if [ "$RECOVERY_MODE" -eq 1 ]; then
+            "$TMP_KICK" "$PID" --verbose --no-guard-check >> "$LOG_PATH" 2>&1 || true
+        else
+            "$TMP_KICK" "$PID" --verbose >> "$LOG_PATH" 2>&1 || true
+        fi
         sleep 1
     fi
 
     log_line "installing video callback chain for pid $PID"
     if "$TMP_KICK" "$PID" --verbose --install-video-chain --no-start-call >> "$LOG_PATH" 2>&1; then
         if ports_ready; then
-            touch "$STATE_PATH"
+            mark_state "$PID"
             log_line "vendor RTSP bootstrap finished successfully"
         fi
         exit 0
     fi
 
     if ports_ready; then
-        touch "$STATE_PATH"
+        mark_state "$PID"
         log_line "ports 88 and 89 are listening and the chain install returned non-zero; assuming this boot is already patched"
     else
         log_line "vendor RTSP ports are not ready yet; will retry next custom.sh cycle"
