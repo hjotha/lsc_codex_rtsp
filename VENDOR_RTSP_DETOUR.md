@@ -48,6 +48,15 @@ Media proven live:
 - `videoSub/track1` = H.265 RTP
 - `videoSub/track2` = PCMA RTP
 
+Cold-boot persistence was also validated on the same date:
+
+- the camera was power-cycled with the SD bootstrap installed
+- the stream came back on `192.168.1.126`
+- the Tuya app remained usable
+- `23`, `24`, `88`, `89`, `6668`, and `8080` were listening
+- `554` and `8554` remained closed
+- no custom long-running RTSP sidecar process was present
+
 ## Why the plain one-shot call was not enough
 
 Calling `ht_rtsp_start` alone starts the vendor worker thread and opens the listeners, but that does not automatically feed video into the RTSP path.
@@ -288,8 +297,10 @@ That can happen because the UDP return path lands on the Windows host instead of
 Active:
 
 - `src/rtsp_kick.c`
+- `sdcard/vendor_rtsp_boot.sh`
 - `scripts/build_rtsp_kick_anyka.sh`
 - `scripts/deploy_rtsp_kick.sh`
+- `scripts/install_vendor_bootstrap.sh`
 - `scripts/make_deploy_rtsp_kick_telnet.sh`
 - `tools/telnet_exec.py`
 - `tools/telnet_upload_file.py`
@@ -299,3 +310,43 @@ Active:
 Archived sidecar:
 
 - `unused/sidecar/`
+
+## Boot persistence
+
+The tested SD hack environment already runs `/tmp/sd/custom.sh` in a loop from `hack.sh`, so the clean persistence path is SD-based rather than firmware replacement.
+
+This repository now provides:
+
+- `sdcard/vendor_rtsp_boot.sh`
+  the camera-side bootstrap helper
+- `scripts/install_vendor_bootstrap.sh`
+  the host-side installer
+
+The helper is designed to be idempotent per boot:
+
+- it copies `/tmp/sd/rtsp_kick` into `/tmp/rtsp_kick`
+- starts the stock RTSP worker if the listeners are missing
+- installs the video callback chain
+- drops a `/tmp/vendor_rtsp_boot.done` marker once successful
+
+Install it with:
+
+```bash
+bash scripts/install_vendor_bootstrap.sh 192.168.1.126 24
+```
+
+Practical boot note from the validated camera:
+
+- the first execution can happen too early during boot
+- that first attempt may log a temporary `Protocol error`
+- the next retry from the `custom.sh` loop succeeds and writes `/tmp/vendor_rtsp_boot.done`
+
+For the shortest end-user procedure, see:
+
+- `STEP_BY_STEP.md`
+
+## Why no `iptables` alias was added
+
+The tested firmware did not provide a usable `iptables` binary.
+
+A plain TCP port forward is also not a fully correct RTSP alias here, because the stock server emits absolute control URLs using ports `88` and `89`. For that reason, no default `8554` or `554` alias is enabled in this repository at the moment.

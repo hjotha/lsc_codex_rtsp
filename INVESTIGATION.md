@@ -124,7 +124,55 @@ It has now been moved to:
 
 The most useful next tasks are:
 
-- automate the detour after boot
 - run longer soak tests with the Tuya app active
 - decide whether a relay to `554` is worth implementing
 - keep the sidecar only as a lab tool, not the primary delivery path
+
+## Addendum 2026-04-12: boot persistence path
+
+The tested camera already had a useful SD hack loop:
+
+- `/mnt/hack.sh` mounts the SD card
+- then it runs `/tmp/sd/custom.sh` every 10 seconds
+
+That means the clean persistence path is:
+
+- keep the stock firmware binary untouched
+- place `rtsp_kick` on the SD card
+- add an idempotent bootstrap helper called from `custom.sh`
+
+This repo now includes that path:
+
+- `sdcard/vendor_rtsp_boot.sh`
+- `scripts/install_vendor_bootstrap.sh`
+
+Important result from the same investigation:
+
+- the firmware did not expose a usable `iptables` binary
+- therefore a trivial NAT-based alias from `8554` to `88` was not available
+- a raw TCP forward was intentionally not enabled by default because the stock RTSP SDP advertises absolute control URLs on `88` and `89`
+
+## Addendum 2026-04-12: validated cold boot
+
+The SD bootstrap path was then validated with a real unplug/replug cold boot on the tested camera.
+
+Observed sequence:
+
+- first `custom.sh` pass copied `rtsp_kick` into `/tmp`
+- the very first `ht_rtsp_start` attempt was too early and logged a temporary `Protocol error`
+- the same early pass saw video callback slots still at `0x00000000`
+- the next `custom.sh` retry about 10 seconds later succeeded
+- `ht_rtsp_start` completed cleanly
+- the callback chain installed against the expected live Tuya wrappers
+- `/tmp/vendor_rtsp_boot.done` was created
+
+Observed steady state after the successful cold boot:
+
+- stock `anyka_ipc` still running
+- no custom long-running RTSP sidecar process
+- listeners on `23`, `24`, `88`, `89`, `6668`, and `8080`
+- `554` closed
+- `8554` closed
+- live RTP still present on `88/videoMain/track1`
+
+That result closes the boot automation item for the tested firmware and SD hack environment.

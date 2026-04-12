@@ -31,6 +31,7 @@ It has been validated on a real camera with:
 What is already proven:
 
 - the Tuya app remains usable after the detour is installed
+- the same camera survived a full unplug/replug power cycle and came back with the detour auto-applied from the SD bootstrap
 - the stock `anyka_ipc` process remains alive
 - the stock vendor RTSP server responds on:
   `88`
@@ -56,6 +57,8 @@ Live checks on `2026-04-12` confirmed:
 - `89` open
 - `554` closed
 - `8554` closed
+- after cold boot, `23`, `24`, `6668`, and `8080` were also present as expected for the stock firmware plus the SD hack loop
+- no custom long-running RTSP sidecar process was required
 
 ## Tested RTSP URLs
 
@@ -125,12 +128,27 @@ In other words:
 - yes, alternate ports are theoretically possible
 - no, they are not part of the currently proven safe hack
 
+### Why not just use `iptables`
+
+On the tested firmware, no usable `iptables` binary was present.
+
+A plain TCP forward from `8554 -> 88` is also not a clean RTSP alias, because the stock server advertises absolute control URLs on ports `88` and `89` inside SDP. That makes a raw TCP relay only a best-effort convenience hack, not a correct transparent alias.
+
+So the current recommendation remains:
+
+- use `88` for `videoMain`
+- use `89` for `videoSub`
+- only add a friendly alias later with an RTSP-aware proxy or a known-tolerant client
+
 ## Repository layout
 
 Current active files:
 
 - `src/rtsp_kick.c`
+- `sdcard/vendor_rtsp_boot.sh`
+- `STEP_BY_STEP.md`
 - `scripts/build_rtsp_kick_anyka.sh`
+- `scripts/install_vendor_bootstrap.sh`
 - `scripts/make_deploy_rtsp_kick_telnet.sh`
 - `scripts/deploy_rtsp_kick.sh`
 - `tools/telnet_exec.py`
@@ -180,6 +198,90 @@ That script:
 The upload is volatile by design:
 
 - rebooting the camera clears `/tmp/rtsp_kick`
+
+## Boot automation
+
+On the tested camera, `hack.sh` already runs `/tmp/sd/custom.sh` every 10 seconds. That makes boot persistence possible without replacing the stock firmware binary.
+
+This repository now includes:
+
+- `sdcard/vendor_rtsp_boot.sh`
+  an idempotent SD-side helper that:
+  copies `rtsp_kick` from SD into `/tmp`
+  starts the stock RTSP worker if needed
+  installs the video callback chain
+- `scripts/install_vendor_bootstrap.sh`
+  a host-side installer that:
+  uploads `rtsp_kick` to `/tmp/sd/rtsp_kick`
+  uploads `vendor_rtsp_boot.sh` to `/tmp/sd/vendor_rtsp_boot.sh`
+  patches `custom.sh` to call it on each boot cycle
+
+Install the bootstrap:
+
+```bash
+bash scripts/install_vendor_bootstrap.sh 192.168.1.126 24
+```
+
+After that, a reboot should re-apply the vendor RTSP detour automatically through the SD hack path.
+
+What was observed on the validated cold boot:
+
+- the first early boot attempt can happen before `anyka_ipc` is fully ready
+- that early attempt may log a temporary `Protocol error` or see null callback slots
+- the next `custom.sh` retry about 10 seconds later succeeds cleanly
+- once the callbacks match the expected Tuya wrappers, the chain is installed and `/tmp/vendor_rtsp_boot.done` is created
+
+## Simple step-by-step
+
+If you just want the shortest safe path, read [`STEP_BY_STEP.md`](STEP_BY_STEP.md).
+
+The simple version is:
+
+1. Manually prepare the camera and SD card.
+   The camera must already boot with the SD hack environment that runs `/tmp/sd/custom.sh`.
+   The SD card must be inserted in the camera.
+   The camera must be reachable by IP and telnet on port `24`.
+2. On the host, open this repository in WSL or another Linux shell with `bash` and `python3`.
+3. Run:
+
+```bash
+bash scripts/install_vendor_bootstrap.sh 192.168.1.126 24
+```
+
+4. Manually power-cycle the camera.
+   Unplug power for about 10 to 15 seconds, then plug it back in.
+5. Wait for the camera to reconnect to Wi-Fi and for the SD `custom.sh` loop to run.
+   In the validated setup, the successful retry happened within about 10 seconds after the first too-early attempt.
+6. Open the stream in your client:
+
+```text
+rtsp://192.168.1.126:88/videoMain
+rtsp://192.168.1.126:89/videoSub
+```
+
+7. Optional host-side verification:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/rtsp_probe_windows.ps1 `
+  -CameraHost 192.168.1.126 `
+  -Port 88 `
+  -Path videoMain `
+  -Kind video
+```
+
+8. Optional camera-side verification:
+
+```bash
+python3 tools/telnet_exec.py 192.168.1.126 --port 24 \
+  --command 'ls -l /tmp/vendor_rtsp_boot.*; tail -n 40 /tmp/vendor_rtsp_boot.log; ps; netstat -an'
+```
+
+Expected result:
+
+- the Tuya app still works
+- `rtsp://CAMERA_IP:88/videoMain` plays
+- `rtsp://CAMERA_IP:89/videoSub` plays
+- `554` and `8554` remain closed unless you intentionally add another proxy later
 
 ## Start the vendor RTSP server
 
