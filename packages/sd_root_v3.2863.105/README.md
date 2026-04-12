@@ -39,6 +39,7 @@ into the root of the SD card.
 
 That means copying:
 
+- `hack`
 - `hack.sh`
 - `custom.sh`
 - `rtsp_kick`
@@ -60,6 +61,9 @@ That is the beginner path.
 
 `install_vendor_bootstrap.sh` is not copied to the SD card.
 It is a host-side helper for people who already have a working hacked SD setup and want to patch it remotely over telnet.
+
+Keep both `hack` and `hack.sh` on the card.
+On the tested camera, that is the safest compatibility setup.
 
 ## Safety behavior
 

@@ -91,6 +91,9 @@ So beginners can use either:
 - `packages/sd_root_v3.2863.105/root/`
 - `sdcard/`
 
+On the tested camera, keeping both `hack` and `hack.sh` on the SD card is the safest path.
+The repository now ships both.
+
 This path is intentionally gated to the tested stock `anyka_ipc` build:
 
 - firmware:
@@ -185,6 +188,7 @@ So the current recommendation remains:
 Current active files:
 
 - `src/rtsp_kick.c`
+- `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
 - `sdcard/rtsp_kick`

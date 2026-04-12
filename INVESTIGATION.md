@@ -143,6 +143,7 @@ That means the clean persistence path is:
 
 This repo now includes that path:
 
+- `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
 - `sdcard/vendor_rtsp_boot.sh`
@@ -197,6 +198,7 @@ The repository also now contains a simpler blank-card bundle:
 
 The key simplification was recognizing that the essential boot path only needs:
 
+- `hack`
 - `hack.sh`
 - `custom.sh`
 - `rtsp_kick`
@@ -208,3 +210,20 @@ The MD5 file gates the hack to the tested stock binary:
 - `c31358a8f598c56073720e96c004fa9c`
 
 That keeps the beginner path simple while still refusing unsupported firmware by default.
+
+## Addendum 2026-04-12: restore hack compatibility file
+
+Removing the SD-root `hack` file caused a regression in manual testing:
+
+- the camera came back on Wi-Fi
+- `6668` was open
+- `24`, `88`, and `89` stayed closed
+
+That strongly suggests the tested firmware path is sensitive to the presence of the SD-root `hack` compatibility file.
+
+The repository now ships both:
+
+- `hack`
+- `hack.sh`
+
+And `hack` is no longer an empty marker. It now carries the same startup script body as `hack.sh` to maximize compatibility.

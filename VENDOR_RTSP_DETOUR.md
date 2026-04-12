@@ -188,11 +188,14 @@ For non-technical users, the main documented path is now:
 
 That bundle includes:
 
+- `hack`
 - `hack.sh`
 - `custom.sh`
 - `rtsp_kick`
 - `vendor_rtsp_boot.sh`
 - `vendor_rtsp_boot.md5`
+
+On the tested camera, keeping both `hack` and `hack.sh` on the card is the safest compatibility choice.
 
 ## Commands
 
