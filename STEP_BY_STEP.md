@@ -26,51 +26,55 @@ It does not replace `anyka_ipc` and it does not require the old custom sidecar s
 
 ## What you need
 
-- the camera connected to your Wi-Fi
-- the camera reachable by IP
-- telnet access on port `24`
-- the SD card inserted in the camera
-- the SD hack environment already working so the camera runs `/tmp/sd/custom.sh`
-- a host machine with:
-  `bash`
-  `python3`
-  access to this repository
+- the camera on stock firmware `V3.2863.105`
+- a microSD card
+- a computer to copy files to the microSD card
 
-## What you must do manually
+## The short version
 
-These are the manual actions:
+1. Format the microSD card as `FAT32`.
+   Do not use `exFAT`.
+2. Copy every file from:
+   `packages/sd_root_v3.2863.105/root/`
+   to the root of the microSD card.
+3. Safely eject the microSD card.
+4. Turn the camera off.
+5. Insert the microSD card.
+6. Turn the camera on.
+7. Wait for the camera to connect to Wi-Fi.
+8. Open:
+   `rtsp://CAMERA_IP:88/videoMain`
+   `rtsp://CAMERA_IP:89/videoSub`
 
-1. Put the SD card in the camera.
-2. Power the camera on and let it connect to Wi-Fi.
-3. Find the camera IP address.
-4. After the installer finishes, unplug the camera power.
-5. Wait about 10 to 15 seconds.
-6. Plug the camera back in.
-7. Open the RTSP URL in your player.
+That is the main beginner workflow.
 
-## What you run on the host
+You do not copy `install_vendor_bootstrap.sh` to the SD card.
+That script is only for advanced remote installation over telnet from a Linux host.
 
-Open a shell in this repository and run:
+The SD bootstrap checks the running stock binary hash before patching.
+If the camera is not running the tested `V3.2863.105` stock build, it refuses to apply the hack.
 
-```bash
-bash scripts/install_vendor_bootstrap.sh 192.168.1.126 24
-```
+## Files to copy
 
-What that command does:
+Copy these files to the root of the microSD card:
 
-- builds `rtsp_kick`
-- uploads it to `/tmp/sd/rtsp_kick`
-- uploads `sdcard/vendor_rtsp_boot.sh` to `/tmp/sd/vendor_rtsp_boot.sh`
-- patches `/tmp/sd/custom.sh` so the bootstrap helper runs automatically on boot
-- keeps a backup at:
-  `/tmp/sd/custom.sh.pre_vendor_rtsp`
+- `hack`
+- `hack.sh`
+- `custom.sh`
+- `rtsp_kick`
+- `vendor_rtsp_boot.sh`
+- `vendor_rtsp_boot.md5`
+
+They are already collected here:
+
+- `packages/sd_root_v3.2863.105/root/`
 
 ## What happens on boot
 
 After the power cycle:
 
-- the stock SD hack loop starts
-- `/tmp/sd/custom.sh` runs
+- the stock firmware executes `/mnt/hack.sh` from the SD card
+- `hack.sh` starts a loop that runs `/tmp/sd/custom.sh`
 - `vendor_rtsp_boot.sh` copies `rtsp_kick` into `/tmp`
 - it starts the stock vendor RTSP worker if needed
 - it installs the video callback chain
@@ -127,6 +131,7 @@ Good signs are:
 - the log says `vendor RTSP bootstrap finished successfully`
 - `88` is listening
 - `89` is listening
+- `24` is listening
 - `8554` is closed
 - `554` is closed
 - `anyka_ipc` is running
@@ -139,18 +144,15 @@ In the validated final state:
 - `rtsp_kick` is only a bootstrap helper copied to `/tmp`
 - there is no custom long-running sidecar RTSP server process
 
-## If you want to disable the bootstrap
+## If you want to remove the hack
 
-The installer keeps a backup of `custom.sh`:
+Delete these files from the SD card root:
 
-```text
-/tmp/sd/custom.sh.pre_vendor_rtsp
-```
+- `hack`
+- `hack.sh`
+- `custom.sh`
+- `rtsp_kick`
+- `vendor_rtsp_boot.sh`
+- `vendor_rtsp_boot.md5`
 
-So the safe manual rollback is:
-
-1. connect by telnet
-2. restore the backup over `/tmp/sd/custom.sh`
-3. remove `/tmp/sd/vendor_rtsp_boot.sh`
-4. optionally remove `/tmp/sd/rtsp_kick`
-5. reboot the camera
+Then reboot the camera without the hacked SD contents.

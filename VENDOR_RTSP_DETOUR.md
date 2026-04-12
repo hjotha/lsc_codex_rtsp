@@ -18,6 +18,8 @@ That gives us:
 - stock Tuya app flow
 - stock vendor RTSP on `88` and `89`
 
+This detour is currently specific to the tested stock `anyka_ipc` build, because the function and callback addresses used by `rtsp_kick` are hardcoded for that binary layout.
+
 ## Live result
 
 Validated on `2026-04-12` against camera `192.168.1.126`.
@@ -53,9 +55,11 @@ Cold-boot persistence was also validated on the same date:
 - the camera was power-cycled with the SD bootstrap installed
 - the stream came back on `192.168.1.126`
 - the Tuya app remained usable
-- `23`, `24`, `88`, `89`, `6668`, and `8080` were listening
+- `23`, `24`, `88`, `89`, `6668`, and `8080` were listening on the validation SD card
 - `554` and `8554` remained closed
 - no custom long-running RTSP sidecar process was present
+
+The simplified beginner SD bundle does not rely on `8080`.
 
 ## Why the plain one-shot call was not enough
 
@@ -111,6 +115,8 @@ Tested target:
   `V3.2863.105`
 - stock binary md5:
   `c31358a8f598c56073720e96c004fa9c`
+
+The SD bootstrap now checks that MD5 before patching and refuses unsupported builds unless the research override marker is present.
 
 Default addresses used by `rtsp_kick`:
 
@@ -169,6 +175,25 @@ That uploads:
   `/tmp/rtsp_kick`
 
 The helper is intentionally deployed to `/tmp` so a reboot clears it.
+
+## Beginner SD card path
+
+For non-technical users, the main documented path is now:
+
+1. format the microSD card as `FAT32`
+2. copy everything from `packages/sd_root_v3.2863.105/root/` to the card root
+3. insert the card into the powered-off camera
+4. power the camera back on
+5. open `rtsp://CAMERA_IP:88/videoMain` or `rtsp://CAMERA_IP:89/videoSub`
+
+That bundle includes:
+
+- `hack`
+- `hack.sh`
+- `custom.sh`
+- `rtsp_kick`
+- `vendor_rtsp_boot.sh`
+- `vendor_rtsp_boot.md5`
 
 ## Commands
 

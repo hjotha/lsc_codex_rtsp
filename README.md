@@ -57,8 +57,39 @@ Live checks on `2026-04-12` confirmed:
 - `89` open
 - `554` closed
 - `8554` closed
-- after cold boot, `23`, `24`, `6668`, and `8080` were also present as expected for the stock firmware plus the SD hack loop
+- on the validation SD card, `23`, `24`, `6668`, and `8080` were also present
 - no custom long-running RTSP sidecar process was required
+
+The beginner SD bundle does not rely on `8080`.
+
+## Easiest install
+
+For normal users, the easiest documented path is now:
+
+1. format a microSD card as `FAT32`
+   not `exFAT`
+2. copy everything from:
+   `packages/sd_root_v3.2863.105/root/`
+   to the root of the card
+3. insert the card into the camera
+4. power-cycle the camera
+5. open:
+   `rtsp://CAMERA_IP:88/videoMain`
+   `rtsp://CAMERA_IP:89/videoSub`
+
+That is the beginner path on the tested firmware.
+
+Do not copy `install_vendor_bootstrap.sh` to the SD card.
+That script is for advanced remote installation from a Linux host after telnet is already available.
+
+This path is intentionally gated to the tested stock `anyka_ipc` build:
+
+- firmware:
+  `V3.2863.105`
+- md5:
+  `c31358a8f598c56073720e96c004fa9c`
+
+If the running stock binary does not match, the SD bootstrap refuses to patch.
 
 ## Tested RTSP URLs
 
@@ -145,9 +176,15 @@ So the current recommendation remains:
 Current active files:
 
 - `src/rtsp_kick.c`
+- `sdcard/hack`
+- `sdcard/hack.sh`
+- `sdcard/custom.sh`
 - `sdcard/vendor_rtsp_boot.sh`
+- `sdcard/vendor_rtsp_boot.md5`
+- `packages/sd_root_v3.2863.105/`
 - `STEP_BY_STEP.md`
 - `scripts/build_rtsp_kick_anyka.sh`
+- `scripts/prepare_sd_root_bundle.sh`
 - `scripts/install_vendor_bootstrap.sh`
 - `scripts/make_deploy_rtsp_kick_telnet.sh`
 - `scripts/deploy_rtsp_kick.sh`
@@ -201,15 +238,21 @@ The upload is volatile by design:
 
 ## Boot automation
 
-On the tested camera, `hack.sh` already runs `/tmp/sd/custom.sh` every 10 seconds. That makes boot persistence possible without replacing the stock firmware binary.
+On the tested camera, the stock firmware executes `/mnt/hack.sh` from the SD card, and that script runs `/tmp/sd/custom.sh` every 10 seconds. That makes boot persistence possible without replacing the stock firmware binary.
 
 This repository now includes:
 
+- `sdcard/hack.sh`
+- `sdcard/custom.sh`
 - `sdcard/vendor_rtsp_boot.sh`
   an idempotent SD-side helper that:
   copies `rtsp_kick` from SD into `/tmp`
   starts the stock RTSP worker if needed
   installs the video callback chain
+- `sdcard/vendor_rtsp_boot.md5`
+  the supported stock binary hash for the tested firmware
+- `packages/sd_root_v3.2863.105/root/`
+  the copy-to-card bundle for beginners
 - `scripts/install_vendor_bootstrap.sh`
   a host-side installer that:
   uploads `rtsp_kick` to `/tmp/sd/rtsp_kick`
@@ -237,29 +280,20 @@ If you just want the shortest safe path, read [`STEP_BY_STEP.md`](STEP_BY_STEP.m
 
 The simple version is:
 
-1. Manually prepare the camera and SD card.
-   The camera must already boot with the SD hack environment that runs `/tmp/sd/custom.sh`.
-   The SD card must be inserted in the camera.
-   The camera must be reachable by IP and telnet on port `24`.
-2. On the host, open this repository in WSL or another Linux shell with `bash` and `python3`.
-3. Run:
-
-```bash
-bash scripts/install_vendor_bootstrap.sh 192.168.1.126 24
-```
-
-4. Manually power-cycle the camera.
-   Unplug power for about 10 to 15 seconds, then plug it back in.
-5. Wait for the camera to reconnect to Wi-Fi and for the SD `custom.sh` loop to run.
-   In the validated setup, the successful retry happened within about 10 seconds after the first too-early attempt.
-6. Open the stream in your client:
+1. Format the microSD card as `FAT32`.
+2. Copy every file from `packages/sd_root_v3.2863.105/root/` to the root of the card.
+3. Turn the camera off.
+4. Insert the card.
+5. Turn the camera on.
+6. Wait for the camera to reconnect to Wi-Fi.
+7. Open the stream in your client:
 
 ```text
 rtsp://192.168.1.126:88/videoMain
 rtsp://192.168.1.126:89/videoSub
 ```
 
-7. Optional host-side verification:
+8. Optional host-side verification:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/rtsp_probe_windows.ps1 `
@@ -269,7 +303,7 @@ powershell -ExecutionPolicy Bypass -File tools/rtsp_probe_windows.ps1 `
   -Kind video
 ```
 
-8. Optional camera-side verification:
+9. Optional camera-side verification:
 
 ```bash
 python3 tools/telnet_exec.py 192.168.1.126 --port 24 \

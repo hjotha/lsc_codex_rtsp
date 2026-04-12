@@ -143,7 +143,12 @@ That means the clean persistence path is:
 
 This repo now includes that path:
 
+- `sdcard/hack`
+- `sdcard/hack.sh`
+- `sdcard/custom.sh`
 - `sdcard/vendor_rtsp_boot.sh`
+- `sdcard/vendor_rtsp_boot.md5`
+- `packages/sd_root_v3.2863.105/`
 - `scripts/install_vendor_bootstrap.sh`
 
 Important result from the same investigation:
@@ -170,9 +175,38 @@ Observed steady state after the successful cold boot:
 
 - stock `anyka_ipc` still running
 - no custom long-running RTSP sidecar process
-- listeners on `23`, `24`, `88`, `89`, `6668`, and `8080`
+- listeners on `23`, `24`, `88`, `89`, `6668`, and `8080` on the older validation SD card
 - `554` closed
 - `8554` closed
 - live RTP still present on `88/videoMain/track1`
 
 That result closes the boot automation item for the tested firmware and SD hack environment.
+
+## Addendum 2026-04-12: simpler blank-SD bundle
+
+The SD mount on the tested camera was:
+
+- `vfat`
+
+So the beginner docs now recommend:
+
+- `FAT32`, not exFAT
+
+The repository also now contains a simpler blank-card bundle:
+
+- `packages/sd_root_v3.2863.105/root/`
+
+The key simplification was recognizing that the essential boot path only needs:
+
+- `hack`
+- `hack.sh`
+- `custom.sh`
+- `rtsp_kick`
+- `vendor_rtsp_boot.sh`
+- `vendor_rtsp_boot.md5`
+
+The MD5 file gates the hack to the tested stock binary:
+
+- `c31358a8f598c56073720e96c004fa9c`
+
+That keeps the beginner path simple while still refusing unsupported firmware by default.

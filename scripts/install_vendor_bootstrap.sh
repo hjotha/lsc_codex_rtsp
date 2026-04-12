@@ -12,12 +12,14 @@ CAMERA_IP="$1"
 TELNET_PORT="${2:-24}"
 TMP_TELNET="$REPO_ROOT/out/install_vendor_bootstrap.telnet"
 NORMALIZED_BOOT="$REPO_ROOT/out/vendor_rtsp_boot.sh"
+NORMALIZED_MD5="$REPO_ROOT/out/vendor_rtsp_boot.md5"
 
 mkdir -p "$REPO_ROOT/out"
 
 bash "$REPO_ROOT/scripts/build_rtsp_kick_anyka.sh" >/dev/null
 
 sed 's/\r$//' "$REPO_ROOT/sdcard/vendor_rtsp_boot.sh" > "$NORMALIZED_BOOT"
+sed 's/\r$//' "$REPO_ROOT/sdcard/vendor_rtsp_boot.md5" > "$NORMALIZED_MD5"
 
 python3 "$REPO_ROOT/tools/telnet_upload_file.py" "$CAMERA_IP" \
   "$REPO_ROOT/out/rtsp_kick_arm" \
@@ -36,6 +38,14 @@ python3 "$REPO_ROOT/tools/telnet_upload_file.py" "$CAMERA_IP" \
   --commands-per-session 1 \
   --mode 755
 
+python3 "$REPO_ROOT/tools/telnet_upload_file.py" "$CAMERA_IP" \
+  "$NORMALIZED_MD5" \
+  /tmp/sd/vendor_rtsp_boot.md5 \
+  --port "$TELNET_PORT" \
+  --wait 0.8 \
+  --chunk-lines 1 \
+  --commands-per-session 1
+
 cat >"$TMP_TELNET" <<'EOF'
 if [ ! -e /tmp/sd/custom.sh.pre_vendor_rtsp ]; then
  cp /tmp/sd/custom.sh /tmp/sd/custom.sh.pre_vendor_rtsp
@@ -50,7 +60,7 @@ __VENDOR_RTSP_BOOT__
  chmod 755 /tmp/sd/custom.sh
 fi
 sed -n '1,240p' /tmp/sd/custom.sh
-ls -l /tmp/sd/rtsp_kick /tmp/sd/vendor_rtsp_boot.sh /tmp/sd/custom.sh
+ls -l /tmp/sd/rtsp_kick /tmp/sd/vendor_rtsp_boot.sh /tmp/sd/vendor_rtsp_boot.md5 /tmp/sd/custom.sh
 EOF
 
 python3 "$REPO_ROOT/tools/telnet_exec.py" "$CAMERA_IP" \
