@@ -82,6 +82,15 @@ That is the beginner path on the tested firmware.
 Do not copy `install_vendor_bootstrap.sh` to the SD card.
 That script is for advanced remote installation from a Linux host after telnet is already available.
 
+The same SD-ready files also live in:
+
+- `sdcard/`
+
+So beginners can use either:
+
+- `packages/sd_root_v3.2863.105/root/`
+- `sdcard/`
+
 This path is intentionally gated to the tested stock `anyka_ipc` build:
 
 - firmware:
@@ -179,6 +188,7 @@ Current active files:
 - `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
+- `sdcard/rtsp_kick`
 - `sdcard/vendor_rtsp_boot.sh`
 - `sdcard/vendor_rtsp_boot.md5`
 - `packages/sd_root_v3.2863.105/`

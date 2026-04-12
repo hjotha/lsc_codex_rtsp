@@ -68,6 +68,7 @@ Copy these files to the root of the microSD card:
 They are already collected here:
 
 - `packages/sd_root_v3.2863.105/root/`
+- `sdcard/`
 
 ## What happens on boot
 
