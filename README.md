@@ -185,7 +185,6 @@ So the current recommendation remains:
 Current active files:
 
 - `src/rtsp_kick.c`
-- `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
 - `sdcard/rtsp_kick`

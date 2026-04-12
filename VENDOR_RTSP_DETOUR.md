@@ -188,7 +188,6 @@ For non-technical users, the main documented path is now:
 
 That bundle includes:
 
-- `hack`
 - `hack.sh`
 - `custom.sh`
 - `rtsp_kick`

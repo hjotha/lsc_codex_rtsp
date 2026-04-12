@@ -39,7 +39,6 @@ into the root of the SD card.
 
 That means copying:
 
-- `hack`
 - `hack.sh`
 - `custom.sh`
 - `rtsp_kick`

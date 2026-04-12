@@ -58,7 +58,6 @@ If the camera is not running the tested `V3.2863.105` stock build, it refuses to
 
 Copy these files to the root of the microSD card:
 
-- `hack`
 - `hack.sh`
 - `custom.sh`
 - `rtsp_kick`
@@ -149,7 +148,6 @@ In the validated final state:
 
 Delete these files from the SD card root:
 
-- `hack`
 - `hack.sh`
 - `custom.sh`
 - `rtsp_kick`

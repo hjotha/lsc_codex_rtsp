@@ -143,7 +143,6 @@ That means the clean persistence path is:
 
 This repo now includes that path:
 
-- `sdcard/hack`
 - `sdcard/hack.sh`
 - `sdcard/custom.sh`
 - `sdcard/vendor_rtsp_boot.sh`
@@ -198,7 +197,6 @@ The repository also now contains a simpler blank-card bundle:
 
 The key simplification was recognizing that the essential boot path only needs:
 
-- `hack`
 - `hack.sh`
 - `custom.sh`
 - `rtsp_kick`
