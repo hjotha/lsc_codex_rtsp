@@ -187,6 +187,23 @@ Observed steady state after the successful cold boot:
 
 That result closes the boot automation item for the tested firmware and SD hack environment.
 
+## Addendum 2026-05-01: V3.2863.93 support added
+
+A second firmware was added: `V3.2863.93` (md5 `87f1683cee35353fb2c2be20353bf59c`), validated on camera `192.168.1.162`.
+
+Approach: kept the same `rtsp_kick` binary and the same SD bundle layout; all per-firmware differences are absorbed by flags passed from a MD5-aware `vendor_rtsp_boot.sh`.
+
+Key findings recorded in `V93_ADAPTATION_NOTES.md`:
+
+- Symbol table comparison yielded direct offset mappings for `ht_rtsp_start`, `ht_rtsp_send_video_frame`, `ak_app_video_set_cb`, `malloc`, and the rtsp guard.
+- The rtsp-context struct base shifted between versions (V105 `0x005875e8` -> V93 `0x0051ab1c`), and inside that struct the video callback slots also shifted by +0x10 bytes (slots land at `base+0xa4` / `base+0xe0` on V93 vs `base+0x94` / `base+0xd0` on V105).
+- The expected Tuya video wrapper addresses (what `--install-video-chain` compares against) were located by byte-signature match against the first 48 bytes of the V105 wrappers. Exactly two matches in V93 `.text`: `0x000a7124` and `0x000a723c`.
+- Running only `ht_rtsp_start` on V93 opens ports 88/89 but the server does not respond — TCP handshakes complete but `Recv-Q` fills and no reply is ever sent. `ffmpeg` reports `Invalid data found when processing input`. Running `--install-video-chain` after `ht_rtsp_start` fixes this immediately. The intuition is that registering `ht_rtsp_send_video_frame` through the video callback slots is what unblocks the accept/serve path. On V105 the same two-step sequence was already standard and is what `vendor_rtsp_boot.sh` does.
+
+Also tried and abandoned: bind-mounting the V3.2863.105 `anyka_ipc` over the V3.2863.93 firmware. The camera failed to come back on the network after reboot; restoring the stock V93 binary by removing `anyka_ipc_rtsp` from SD recovered it. Swapping the whole userspace binary between these two firmware revisions is not a safe shortcut.
+
+Post-reboot validation on `2026-05-01` showed the automatic SD bootstrap sequence completing in ~25 seconds, with both `rtsp://CAMERA:88/videoMain` (2304x1296 H.265) and `rtsp://CAMERA:89/videoSub` (640x360 H.265) streaming on the first `ffmpeg` probe after boot, while `anyka_ipc` kept running and Tuya port `6668` stayed listening.
+
 ## Addendum 2026-04-12: simpler blank-SD bundle
 
 The SD mount on the tested camera was:

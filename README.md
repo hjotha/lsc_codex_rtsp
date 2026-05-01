@@ -15,18 +15,16 @@ The sidecar path is now archived under:
 
 ## Current status
 
-As of `2026-04-12`, the vendor RTSP detour is the recommended hack.
+As of `2026-05-01`, the vendor RTSP detour is the recommended hack and now supports two firmware versions.
 
-It has been validated on a real camera with:
+Validated firmwares:
 
-- model family:
-  LSC rotatable / Tuya / Anyka
-- firmware:
-  `V3.2863.105`
-- stock process:
-  `anyka_ipc`
-- camera IP used during validation:
-  `192.168.1.126`
+- `V3.2863.105` — md5 `c31358a8f598c56073720e96c004fa9c`, validated on `192.168.1.126` on `2026-04-12`.
+- `V3.2863.93` — md5 `87f1683cee35353fb2c2be20353bf59c`, validated on `192.168.1.162` on `2026-05-01`.
+
+Both use the same model family (LSC rotatable / Tuya / Anyka, `anyka_ipc`), the same SD bundle structure, and the same `rtsp_kick` binary. The per-firmware offsets are selected automatically by `sdcard/vendor_rtsp_boot.sh` based on the MD5 of the running `anyka_ipc`.
+
+See `V93_ADAPTATION_NOTES.md` for the full V3.2863.93 investigation log and the offset table.
 
 What is already proven:
 
@@ -89,7 +87,10 @@ The same SD-ready files also live in:
 So beginners can use either:
 
 - `packages/sd_root_v3.2863.105/root/`
+- `packages/sd_root_v3.2863.93/root/`
 - `sdcard/`
+
+`sdcard/` and both `packages/sd_root_*` bundles ship the same `rtsp_kick` binary and the same MD5-aware `vendor_rtsp_boot.sh`. The only thing that differs between the two `packages/*` bundles is the `vendor_rtsp_boot.md5` hint file, which only matters for the legacy single-firmware guard path. On an unknown camera, using either bundle works as long as the running firmware is one of the two supported MD5s.
 
 On the tested camera, keeping both `hack` and `hack.sh` on the SD card is the safest path.
 The known-good backup used:
@@ -101,14 +102,12 @@ The known-good backup used:
 
 The repository now follows that layout again.
 
-This path is intentionally gated to the tested stock `anyka_ipc` build:
+This path is gated to the tested stock `anyka_ipc` builds. The bundled `vendor_rtsp_boot.sh` has a builtin MD5 table and per-firmware offset set for:
 
-- firmware:
-  `V3.2863.105`
-- md5:
-  `c31358a8f598c56073720e96c004fa9c`
+- `V3.2863.105` — md5 `c31358a8f598c56073720e96c004fa9c`
+- `V3.2863.93` — md5 `87f1683cee35353fb2c2be20353bf59c`
 
-If the running stock binary does not match, the SD bootstrap refuses to patch.
+If the running stock binary does not match, the SD bootstrap refuses to patch (unless `vendor_rtsp_boot.allow_unsupported` is touched on the SD). A single `md5` file override is also still respected for legacy single-firmware bundles.
 
 ## Tested RTSP URLs
 
@@ -204,6 +203,8 @@ Current active files:
 - `sdcard/vendor_rtsp_boot.sh`
 - `sdcard/vendor_rtsp_boot.md5`
 - `packages/sd_root_v3.2863.105/`
+- `packages/sd_root_v3.2863.93/`
+- `V93_ADAPTATION_NOTES.md`
 - `STEP_BY_STEP.md`
 - `scripts/build_rtsp_kick_anyka.sh`
 - `scripts/prepare_sd_root_bundle.sh`
