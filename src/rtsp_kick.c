@@ -69,6 +69,9 @@ typedef struct {
 typedef struct {
     pid_t tid;
     int arg0;
+    int arg1;
+    int arg2;
+    int arg3;
     unsigned long func_vaddr;
     unsigned long guard_vaddr;
     unsigned long trap_addr;
@@ -93,13 +96,18 @@ static void usage(FILE *stream, const char *argv0)
     fprintf(stream,
             "usage: %s [options] <tid>\n"
             "\n"
-            "One-shot ptrace caller for ht_rtsp_start on Anyka/Tuya stock firmware.\n"
+            "One-shot ptrace caller for Anyka/Tuya stock firmware functions.\n"
+            "Defaults target ht_rtsp_start, but --func-vaddr and --arg0..--arg3\n"
+            "can be used for other in-process stock helpers.\n"
             "\n"
             "options:\n"
             "  --dry-run               attach, resolve addresses, read guard, detach\n"
             "  --no-guard-check        continue even if the RTSP guard is non-zero\n"
             "  --verbose               print extra diagnostics\n"
             "  --arg0 N                argument passed in r0 (default: 0)\n"
+            "  --arg1 N                argument passed in r1 (default: 0)\n"
+            "  --arg2 N                argument passed in r2 (default: 0)\n"
+            "  --arg3 N                argument passed in r3 (default: 0)\n"
             "  --func-vaddr HEX        virtual address of ht_rtsp_start (default: 0x%08lx)\n"
             "  --guard-vaddr HEX       virtual address of RTSP guard (default: 0x%08lx)\n"
             "  --trap-addr HEX         return trap address in LR (default: 0x%08lx)\n"
@@ -809,6 +817,27 @@ int main(int argc, char **argv)
                 return 2;
             }
             cfg.arg0 = (int)parsed;
+        } else if (strcmp(arg, "--arg1") == 0) {
+            long parsed = 0;
+            if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0) {
+                fprintf(stderr, "invalid value for --arg1\n");
+                return 2;
+            }
+            cfg.arg1 = (int)parsed;
+        } else if (strcmp(arg, "--arg2") == 0) {
+            long parsed = 0;
+            if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0) {
+                fprintf(stderr, "invalid value for --arg2\n");
+                return 2;
+            }
+            cfg.arg2 = (int)parsed;
+        } else if (strcmp(arg, "--arg3") == 0) {
+            long parsed = 0;
+            if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0) {
+                fprintf(stderr, "invalid value for --arg3\n");
+                return 2;
+            }
+            cfg.arg3 = (int)parsed;
         } else if (strcmp(arg, "--func-vaddr") == 0) {
             if (i + 1 >= argc || parse_ulong_arg(argv[++i], &cfg.func_vaddr) != 0) {
                 fprintf(stderr, "invalid value for --func-vaddr\n");
@@ -1021,9 +1050,9 @@ int main(int argc, char **argv)
                             func_runtime,
                             cfg.trap_addr,
                             (unsigned long)cfg.arg0,
-                            0,
-                            0,
-                            0,
+                            (unsigned long)cfg.arg1,
+                            (unsigned long)cfg.arg2,
+                            (unsigned long)cfg.arg3,
                             NULL,
                             0,
                             cfg.verbose,

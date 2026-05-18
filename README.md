@@ -17,6 +17,10 @@ The sidecar path is now archived under:
 
 As of `2026-05-01`, the vendor RTSP detour is the recommended hack and now supports two firmware versions.
 
+As of `2026-05-18`, stock speaker playback has also been validated on
+`V3.2863.93` by calling the in-process MP3 decoder and playback functions with
+`rtsp_kick`. See `SPEAKER_PLAYBACK.md`.
+
 Validated firmwares:
 
 - `V3.2863.105` — md5 `c31358a8f598c56073720e96c004fa9c`, validated on `192.168.1.126` on `2026-04-12`.
@@ -31,6 +35,8 @@ What is already proven:
 - the Tuya app remains usable after the detour is installed
 - the same camera survived a full unplug/replug power cycle and came back with the detour auto-applied from the SD bootstrap
 - the stock `anyka_ipc` process remains alive
+- built-in MP3 assets can be played through the camera speaker on `V3.2863.93`
+  using `scripts/play_speaker_mp3_v93.sh`
 - the stock vendor RTSP server responds on:
   `88`
   `89`
@@ -211,15 +217,23 @@ Current active files:
 - `scripts/install_vendor_bootstrap.sh`
 - `scripts/make_deploy_rtsp_kick_telnet.sh`
 - `scripts/deploy_rtsp_kick.sh`
+- `scripts/play_speaker_mp3_v93.sh`
 - `tools/telnet_exec.py`
 - `tools/telnet_upload_file.py`
+- `tools/telnet_upload_nc.py`
+- `SPEAKER_PLAYBACK.md`
 
-Two tracked binary copies are intentional:
+Three tracked binary copies are intentional:
 
 - `sdcard/rtsp_kick`
   the SD-ready copy of the current ARM build
 - `packages/sd_root_v3.2863.105/root/rtsp_kick`
-  the beginner bundle copy prepared from `sdcard/`
+  the V3.2863.105 beginner bundle copy prepared from `sdcard/`
+- `packages/sd_root_v3.2863.93/root/rtsp_kick`
+  the V3.2863.93 beginner bundle copy prepared from `sdcard/`
+
+Other useful docs and probes:
+
 - `tools/rtsp_probe.py`
 - `tools/rtsp_probe_windows.ps1`
 - `VENDOR_RTSP_DETOUR.md`
@@ -252,7 +266,6 @@ The build script first tries the old Anyka toolchain and falls back to `arm-linu
 After changing `src/rtsp_kick.c`, also sync the tracked bundle copies:
 
 ```bash
-cp out/rtsp_kick_arm sdcard/rtsp_kick
 bash scripts/prepare_sd_root_bundle.sh
 ```
 
@@ -272,6 +285,24 @@ That script:
 The upload is volatile by design:
 
 - rebooting the camera clears `/tmp/rtsp_kick`
+
+## Speaker playback
+
+Speaker audio is not an RTSP backchannel. The working path is to call the stock
+audio helpers inside `anyka_ipc` with `rtsp_kick`.
+
+Validated V3.2863.93 test:
+
+```bash
+bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 dingdong 10
+```
+
+The critical detail is that the MP3 decoder must be started first with
+`ht_audio_codec_start_decode(channel=0, decode_type=2)`. Calling
+`ht_audio_codec_play_audio_file` directly can toggle AO logs without producing
+audible output.
+
+Full notes and addresses are in `SPEAKER_PLAYBACK.md`.
 
 ## Boot automation
 
