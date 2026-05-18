@@ -305,12 +305,18 @@ The critical detail is that the MP3 decoder must be started first with
 audible output, and direct same-thread playback was unstable during live tests.
 The helper defaults to the validated thread-mode call path.
 
-For an arbitrary local MP3, pass the file path; the helper uploads it to
-`/tmp/speaker.wav` before playback:
+Local MP3 upload is not considered stable yet. A live test with a generated MP3
+uploaded to `/tmp/speaker.wav` restarted `anyka_ipc` before audible playback,
+even though RTSP recovered automatically. The helper now requires an explicit
+opt-in for that path:
 
 ```bash
-bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./chime.mp3 10
+PLAY_ALLOW_LOCAL_MP3=1 bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./chime.mp3 10
 ```
+
+Factory MP3s on this camera are narrowband mono prompt files. The highest
+observed factory bitrate is 96 kbps at 8 kHz mono; 16 kHz factory files are
+present, but only up to 24 kbps mono.
 
 Full notes and addresses are in `SPEAKER_PLAYBACK.md`.
 

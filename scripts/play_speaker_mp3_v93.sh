@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ "$#" -lt 1 ]; then
   echo "usage: $0 <camera_ip> [sound|path_vaddr] [volume] [telnet_port]" >&2
   echo "sounds: dingdong, factory, siren, hutong1, hutong2, tmp" >&2
-  echo "a local MP3 path is uploaded to /tmp/speaker.wav before playback" >&2
+  echo "local MP3 paths are experimental; set PLAY_ALLOW_LOCAL_MP3=1 to enable" >&2
   exit 2
 fi
 
@@ -16,6 +16,7 @@ VOLUME="${3:-10}"
 TELNET_PORT="${4:-24}"
 PLAY_WAIT_TIMEOUT="${PLAY_WAIT_TIMEOUT:-30}"
 PLAY_CALL_MODE="${PLAY_CALL_MODE:-thread}"
+PLAY_ALLOW_LOCAL_MP3="${PLAY_ALLOW_LOCAL_MP3:-0}"
 UPLOAD_FILE=""
 REMOTE_UPLOAD_PATH="/tmp/speaker.wav"
 
@@ -87,6 +88,12 @@ case "$PLAY_CALL_MODE" in
     ;;
 esac
 
+if [ -n "$UPLOAD_FILE" ] && [ "$PLAY_ALLOW_LOCAL_MP3" != "1" ]; then
+  echo "local MP3 playback is experimental and restarted anyka_ipc in live testing" >&2
+  echo "set PLAY_ALLOW_LOCAL_MP3=1 to upload and play a local file anyway" >&2
+  exit 2
+fi
+
 REMOTE_HELP="$(python3 "$REPO_ROOT/tools/telnet_exec.py" "$CAMERA_IP" \
   --port "$TELNET_PORT" \
   --wait 0.8 \
@@ -98,9 +105,20 @@ if ! printf '%s\n' "$REMOTE_HELP" | grep -q 'rtsp_kick_speaker_ready'; then
 fi
 
 if [ -n "$UPLOAD_FILE" ]; then
-  python3 "$REPO_ROOT/tools/telnet_upload_file.py" "$CAMERA_IP" "$UPLOAD_FILE" "$REMOTE_UPLOAD_PATH" \
-    --port "$TELNET_PORT" \
-    --mode 644 >/dev/null
+  UPLOADED_MP3=0
+  if command -v nc >/dev/null 2>&1; then
+    if python3 "$REPO_ROOT/tools/telnet_upload_nc.py" "$CAMERA_IP" "$UPLOAD_FILE" "$REMOTE_UPLOAD_PATH" \
+      --port "$TELNET_PORT" \
+      --wait 0.8 \
+      --mode 644 >/dev/null; then
+      UPLOADED_MP3=1
+    fi
+  fi
+  if [ "$UPLOADED_MP3" -eq 0 ]; then
+    python3 "$REPO_ROOT/tools/telnet_upload_file.py" "$CAMERA_IP" "$UPLOAD_FILE" "$REMOTE_UPLOAD_PATH" \
+      --port "$TELNET_PORT" \
+      --mode 644 >/dev/null
+  fi
 fi
 
 REMOTE_COMMAND="

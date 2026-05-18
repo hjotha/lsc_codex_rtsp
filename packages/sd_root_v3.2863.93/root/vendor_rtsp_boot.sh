@@ -67,6 +67,14 @@ check_supported_binary() {
         log_line "could not resolve /proc/$pid/exe"
         return 1
     fi
+    case "$exe_path" in
+        */anyka_ipc|anyka_ipc)
+            ;;
+        *)
+            log_line "pidof anyka_ipc returned pid=$pid path=$exe_path; waiting for real anyka_ipc"
+            return 1
+            ;;
+    esac
 
     actual_md5="$(compute_file_md5 "$exe_path")"
     if [ -z "$actual_md5" ]; then

@@ -96,18 +96,64 @@ Available built-in sound names:
 - `hutong2`
 - `tmp` for an already-uploaded `/tmp/speaker.wav`
 
-The helper also accepts a local MP3 path. In that case it uploads the file to
-`/tmp/speaker.wav` first and then plays it through the stock path string:
+Local MP3 files are experimental. A live test with a host-generated MP3 uploaded
+to `/tmp/speaker.wav` did not play and restarted `anyka_ipc`; the camera itself
+did not reboot and RTSP was rearmed automatically. To avoid accidental process
+restarts, local file playback is gated:
 
 ```bash
-bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./chime.mp3 10
+PLAY_ALLOW_LOCAL_MP3=1 bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./chime.mp3 10
 ```
+
+When enabled, the helper uploads the file to `/tmp/speaker.wav` first, using
+the netcat uploader when available and falling back to the base64 telnet
+uploader otherwise.
 
 The script defaults to `PLAY_CALL_MODE=thread`, which is the validated mode. It
 uses `/tmp/rtsp_kick` if it already supports `--arg1` and
 `--call-in-new-thread`. Otherwise it builds and uploads the current official
 `rtsp_kick` to `/tmp/rtsp_kick` first. The upload is volatile and disappears
 after a camera reboot.
+
+## MP3 Format Findings
+
+The MP3 format matters. The stock assets under `/usr/share` are not arbitrary
+modern MP3 files; they are narrowband mono prompt files. On `2026-05-18`, all
+23 factory MP3 files from the `quintal` camera were copied locally and inspected
+with `ffprobe`.
+
+Observed factory envelope:
+
+- channels: always mono
+- sample rates: `8000` Hz or `16000` Hz
+- observed stream bitrates: `8`, `16`, `24`, `64`, and `96` kbps
+- highest observed factory bitrate: `96` kbps
+- highest observed factory sample rate: `16000` Hz, but only up to `24` kbps
+- highest observed `8000` Hz prompt quality: `96` kbps mono
+
+Representative factory files:
+
+| File | Sample rate | Bitrate | ID3 | Notes |
+|---|---:|---:|---|---|
+| `8k16_en_hutong_wait_for_setup.mp3` | 8000 Hz | 96 kbps | no | highest bitrate observed |
+| `dingdong.mp3` | 8000 Hz | 64 kbps | no | validated audible through thread mode |
+| `Hello_your_camera_is_starting.mp3` | 8000 Hz | 64 kbps | no | stock boot prompt |
+| `hutong_sound1.mp3` / `hutong_sound2.mp3` | 8000 Hz | 24 kbps | no | built-in selectable prompts |
+| `sdcard_inserted.mp3` / `sdcard_removed.mp3` | 16000 Hz | 24 kbps | yes | highest sample rate observed |
+| `ding_ding_ding.mp3` | 16000 Hz | 8 kbps | yes | 16 kHz low-bitrate prompt |
+
+Failed local-file tests:
+
+- `out/quintal_arbitrary_test.mp3`: 8000 Hz mono, 32 kbps, no ID3. The first
+  upload attempt was truncated by the base64 telnet uploader and logged
+  `mp3 stream damaged`; the corrected netcat upload preserved all `5472` bytes
+  but still restarted `anyka_ipc` before audible playback.
+- A generated 8000 Hz mono 64 kbps file was prepared to match the
+  `dingdong.mp3` frame header shape, but it has not been validated as safe.
+
+Current recommendation: use built-in factory assets for reliable playback.
+Treat `/tmp/speaker.wav` and local-file upload as an unsafe test path until a
+specific encoding pipeline is proven not to restart `anyka_ipc`.
 
 ## Manual V93 Sequence
 
