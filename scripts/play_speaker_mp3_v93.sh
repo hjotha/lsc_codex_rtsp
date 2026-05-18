@@ -5,7 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [ "$#" -lt 1 ]; then
   echo "usage: $0 <camera_ip> [sound|path_vaddr] [volume] [telnet_port]" >&2
-  echo "sounds: dingdong, factory, siren, hutong1, hutong2, tmp" >&2
+  echo "sounds: dingdong, factory, factory-en-96k, siren, hutong1, hutong2, tmp" >&2
   echo "local MP3 paths are experimental; set PLAY_ALLOW_LOCAL_MP3=1 to enable" >&2
   exit 2
 fi
@@ -28,6 +28,10 @@ case "$SOUND" in
   factory|speaker-test|speaker_test)
     PATH_VADDR="0x00378ec0"
     SOUND_NAME="factory"
+    ;;
+  factory-en-96k|factory_en_96k|en-hutong|en_hutong|highest-factory|highest_factory)
+    PATH_VADDR="0x003815d8"
+    SOUND_NAME="factory-en-96k"
     ;;
   siren)
     PATH_VADDR="0x0037e548"
@@ -55,7 +59,7 @@ case "$SOUND" in
       PATH_VADDR="0x00378c84"
       SOUND_NAME="local-mp3"
     else
-      echo "unknown sound '$SOUND'; use dingdong, factory, siren, hutong1, hutong2, tmp, a local MP3 path, or a 0x path vaddr" >&2
+      echo "unknown sound '$SOUND'; use dingdong, factory, factory-en-96k, siren, hutong1, hutong2, tmp, a local MP3 path, or a 0x path vaddr" >&2
       exit 2
     fi
     ;;

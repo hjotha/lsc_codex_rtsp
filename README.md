@@ -316,7 +316,10 @@ PLAY_ALLOW_LOCAL_MP3=1 bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./chim
 
 Factory MP3s on this camera are narrowband mono prompt files. The highest
 observed factory bitrate is 96 kbps at 8 kHz mono; 16 kHz factory files are
-present, but only up to 24 kbps mono.
+present, but only up to 24 kbps mono. The highest-bitrate factory file,
+`8k16_en_hutong_wait_for_setup.mp3`, played cleanly through the helper as
+`factory-en-96k`; a generated 16 kHz / 96 kbps file only produced distorted
+noise.
 
 Full notes and addresses are in `SPEAKER_PLAYBACK.md`.
 

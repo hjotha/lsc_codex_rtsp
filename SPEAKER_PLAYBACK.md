@@ -91,6 +91,7 @@ Available built-in sound names:
 
 - `dingdong`
 - `factory`
+- `factory-en-96k`
 - `siren`
 - `hutong1`
 - `hutong2`
@@ -148,8 +149,19 @@ Failed local-file tests:
   upload attempt was truncated by the base64 telnet uploader and logged
   `mp3 stream damaged`; the corrected netcat upload preserved all `5472` bytes
   but still restarted `anyka_ipc` before audible playback.
-- A generated 8000 Hz mono 64 kbps file was prepared to match the
-  `dingdong.mp3` frame header shape, but it has not been validated as safe.
+- A generated 16000 Hz mono 96 kbps file uploaded to `/tmp/speaker.wav` was
+  audible only as distorted noise. It did not restart `anyka_ipc`, but it is
+  not a usable prompt format.
+- The local LAME encoder could not produce a true 8000 Hz mono 96 kbps file:
+  requests for 80/96/112/128 kbps at 8000 Hz all produced 64 kbps frames.
+
+Validated high-quality factory control:
+
+- `8k16_en_hutong_wait_for_setup.mp3` is the highest-bitrate factory file found:
+  8000 Hz mono, 96 kbps, no ID3.
+- It played audibly and cleanly through thread mode on `2026-05-18`.
+- `anyka_ipc` stayed on PID `557` and ports `24`, `88`, `89`, and `6668`
+  remained open after playback.
 
 Current recommendation: use built-in factory assets for reliable playback.
 Treat `/tmp/speaker.wav` and local-file upload as an unsafe test path until a
@@ -216,6 +228,7 @@ Built-in MP3 path string addresses:
 | `dingdong` | `/usr/share/dingdong.mp3` | `0x0037b7b0` |
 | `tmp` | `/tmp/speaker.wav` | `0x00378c84` |
 | `factory` | `/usr/share/8k16_cn_factory_speaker_test_voice.mp3` | `0x00378ec0` |
+| `factory-en-96k` | `/usr/share/8k16_en_hutong_wait_for_setup.mp3` | `0x003815d8` |
 | `siren` | `/usr/share/8k16_siren.mp3` | `0x0037e548` |
 | `hutong1` | `/usr/share/hutong_sound1.mp3` | `0x0037b7e4` |
 | `hutong2` | `/usr/share/hutong_sound2.mp3` | `0x00378d58` |
