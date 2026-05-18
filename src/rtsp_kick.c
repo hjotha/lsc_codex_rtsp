@@ -26,11 +26,14 @@
 #define DEFAULT_GUARD_VADDR 0x00587600UL
 #define DEFAULT_TRAP_ADDR   0x00000000UL
 #define DEFAULT_MALLOC_VADDR             0x000798b4UL
+#define DEFAULT_THREAD_CREATE_VADDR      0x00000000UL
+#define DEFAULT_THREAD_STACK_SIZE        0x00010000UL
 #define DEFAULT_VIDEO_SEND_VADDR         0x000d1310UL
 #define DEFAULT_VIDEO_SLOT0_VADDR        0x0058767cUL
 #define DEFAULT_VIDEO_SLOT1_VADDR        0x005876b8UL
 #define DEFAULT_EXPECTED_VIDEO_CB0_VADDR 0x000897ccUL
 #define DEFAULT_EXPECTED_VIDEO_CB1_VADDR 0x000898f4UL
+#define DEFAULT_WAIT_TIMEOUT_SECONDS     5
 
 #define MAX_REMOTE_STACK_WORDS 8
 #define VIDEO_CHAIN_STUB_WORDS 26
@@ -50,6 +53,11 @@ static const uint32_t cacheflush_trampoline[CACHEFLUSH_TRAMPOLINE_WORDS] = {
     0xe12fff1e, /* bx lr              ; return to trap address     */
     0x000f0002, /* .word 0x000f0002   ; __ARM_NR_cacheflush        */
 };
+
+#define THREAD_CALL_STUB_WORDS       8
+#define THREAD_CALL_ALLOC_SIZE       0x80UL
+#define THREAD_CALL_TID_OFFSET       0x40UL
+#define THREAD_CALL_TRAMPOLINE_OFFSET 0x50UL
 
 enum {
     ARM_R0 = 0,
@@ -76,6 +84,8 @@ typedef struct {
     unsigned long guard_vaddr;
     unsigned long trap_addr;
     unsigned long malloc_vaddr;
+    unsigned long thread_create_vaddr;
+    unsigned long thread_stack_size;
     unsigned long video_send_vaddr;
     unsigned long video_slot0_vaddr;
     unsigned long video_slot1_vaddr;
@@ -84,11 +94,13 @@ typedef struct {
     unsigned long peek_vaddr;
     bool dry_run;
     bool install_video_chain;
+    bool call_in_new_thread;
     bool no_guard_check;
     bool no_start_call;
     bool peek_mode;
     bool verbose;
     int peek_words;
+    int wait_timeout_seconds;
 } config_t;
 
 static void usage(FILE *stream, const char *argv0)
@@ -108,12 +120,16 @@ static void usage(FILE *stream, const char *argv0)
             "  --arg1 N                argument passed in r1 (default: 0)\n"
             "  --arg2 N                argument passed in r2 (default: 0)\n"
             "  --arg3 N                argument passed in r3 (default: 0)\n"
-            "  --func-vaddr HEX        virtual address of ht_rtsp_start (default: 0x%08lx)\n"
+            "  --wait-timeout N        seconds to wait for the remote call to return (default: %d)\n"
+            "  --call-in-new-thread    spawn --func-vaddr in a new ak_thread_create thread using --arg0 as thread arg\n"
+            "  --func-vaddr HEX        virtual address of target function (default ht_rtsp_start: 0x%08lx)\n"
             "  --guard-vaddr HEX       virtual address of RTSP guard (default: 0x%08lx)\n"
             "  --trap-addr HEX         return trap address in LR (default: 0x%08lx)\n"
             "  --install-video-chain   allocate a heap stub and chain Tuya video callbacks to ht_rtsp_send_video_frame\n"
             "  --no-start-call         with --install-video-chain, do not call ht_rtsp_start first\n"
             "  --malloc-vaddr HEX      virtual address of malloc@plt (default: 0x%08lx)\n"
+            "  --thread-create-vaddr HEX virtual address of ak_thread_create for --call-in-new-thread\n"
+            "  --thread-stack-size N   stack bytes for --call-in-new-thread (default: 0x%08lx)\n"
             "  --video-send-vaddr HEX  virtual address of ht_rtsp_send_video_frame (default: 0x%08lx)\n"
             "  --video-slot0-vaddr HEX virtual address of video callback slot 0 (default: 0x%08lx)\n"
             "  --video-slot1-vaddr HEX virtual address of video callback slot 1 (default: 0x%08lx)\n"
@@ -123,10 +139,12 @@ static void usage(FILE *stream, const char *argv0)
             "  --peek-words N          number of 32-bit words to dump with --peek-vaddr (default: 1)\n"
             "  -h, --help              show this help\n",
             argv0,
+            DEFAULT_WAIT_TIMEOUT_SECONDS,
             DEFAULT_FUNC_VADDR,
             DEFAULT_GUARD_VADDR,
             DEFAULT_TRAP_ADDR,
             DEFAULT_MALLOC_VADDR,
+            DEFAULT_THREAD_STACK_SIZE,
             DEFAULT_VIDEO_SEND_VADDR,
             DEFAULT_VIDEO_SLOT0_VADDR,
             DEFAULT_VIDEO_SLOT1_VADDR,
@@ -354,8 +372,6 @@ static unsigned long apply_base(uint16_t elf_type,
     return map_base + vaddr;
 }
 
-#define WAIT_TIMEOUT_SECONDS 5
-
 static volatile sig_atomic_t wait_timed_out = 0;
 
 static void alarm_handler(int signo)
@@ -364,7 +380,7 @@ static void alarm_handler(int signo)
     wait_timed_out = 1;
 }
 
-static int wait_for_stop(pid_t tid, int *status)
+static int wait_for_stop(pid_t tid, int *status, int timeout_seconds)
 {
     struct sigaction sa;
     struct sigaction old_sa;
@@ -375,7 +391,7 @@ static int wait_for_stop(pid_t tid, int *status)
     sigaction(SIGALRM, &sa, &old_sa);
 
     wait_timed_out = 0;
-    alarm(WAIT_TIMEOUT_SECONDS);
+    alarm((unsigned int)timeout_seconds);
 
     for (;;) {
         pid_t waited = waitpid(tid, status, __WALL);
@@ -429,6 +445,7 @@ static int remote_call(pid_t tid,
                        unsigned long r3,
                        const unsigned long *stack_words,
                        size_t stack_word_count,
+                       int wait_timeout_seconds,
                        bool verbose,
                        unsigned long *return_r0)
 {
@@ -496,7 +513,7 @@ static int remote_call(pid_t tid,
         call_status = -1;
         goto restore;
     }
-    if (wait_for_stop(tid, &wait_status) != 0) {
+    if (wait_for_stop(tid, &wait_status, wait_timeout_seconds) != 0) {
         call_status = -1;
         goto restore;
     }
@@ -564,7 +581,7 @@ static void print_status_line(const config_t *cfg,
 {
     fprintf(stderr,
             "target=%ld exe=%s type=%s map_base=0x%08lx\n"
-            "ht_rtsp_start=0x%08lx guard=0x%08lx guard_value=0x%08lx\n",
+            "func=0x%08lx guard=0x%08lx guard_value=0x%08lx\n",
             (long)cfg->tid,
             exe_path,
             elf_type_name(elf_type),
@@ -615,6 +632,150 @@ static void build_video_chain_stub(uint32_t *words,
     words[16] = 0xe3a00000U | (uint32_t)(channel_id & 0xffU);
     words[24] = (uint32_t)original_callback;
     words[25] = (uint32_t)video_send_callback;
+}
+
+static void build_thread_call_stub(uint32_t *words, unsigned long func_addr)
+{
+    static const uint32_t template_words[THREAD_CALL_STUB_WORDS] = {
+        0xe92d4010, /* [0] push {r4, lr}       ; keep stack 8-byte aligned */
+        0xe1a04000, /* [1] mov r4, r0          ; save thread argument      */
+        0xe1a00004, /* [2] mov r0, r4          ; pass as callee arg0       */
+        0xe59fc008, /* [3] ldr ip, [pc, #8]    ; =target function          */
+        0xe12fff3c, /* [4] blx ip              ; call target function      */
+        0xe3a00000, /* [5] mov r0, #0          ; thread return value       */
+        0xe8bd8010, /* [6] pop {r4, pc}                                  */
+        0x00000000, /* [7] literal: target function                       */
+    };
+
+    memcpy(words, template_words, sizeof(template_words));
+    words[7] = (uint32_t)func_addr;
+}
+
+static int spawn_thread_call(const config_t *cfg,
+                             pid_t tid,
+                             unsigned long malloc_runtime,
+                             unsigned long thread_create_runtime,
+                             unsigned long func_runtime)
+{
+    unsigned long allocation = 0;
+    unsigned long stub_addr = 0;
+    unsigned long tid_slot_addr = 0;
+    unsigned long trampoline_addr = 0;
+    unsigned long stack_words[1] = {0xffffffffUL};
+    unsigned long thread_create_result = 0;
+    unsigned long created_tid = 0;
+    uint32_t stub[THREAD_CALL_STUB_WORDS];
+    size_t i = 0;
+
+    if (thread_create_runtime == 0) {
+        fprintf(stderr, "--call-in-new-thread requires --thread-create-vaddr\n");
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (cfg->dry_run) {
+        fprintf(stderr,
+                "dry-run: would malloc(0x%08lx), write a %lu-byte thread stub, "
+                "and call ak_thread_create(stub, arg=0x%08x)\n",
+                (unsigned long)THREAD_CALL_ALLOC_SIZE,
+                (unsigned long)(THREAD_CALL_STUB_WORDS * sizeof(uint32_t)),
+                (unsigned int)cfg->arg0);
+        return 0;
+    }
+
+    if (remote_call(tid,
+                    malloc_runtime,
+                    cfg->trap_addr,
+                    THREAD_CALL_ALLOC_SIZE,
+                    0,
+                    0,
+                    0,
+                    NULL,
+                    0,
+                    cfg->wait_timeout_seconds,
+                    cfg->verbose,
+                    &allocation) != 0) {
+        perror("remote malloc");
+        return -1;
+    }
+    if (allocation == 0) {
+        fprintf(stderr, "remote malloc returned NULL\n");
+        errno = ENOMEM;
+        return -1;
+    }
+
+    stub_addr = allocation;
+    tid_slot_addr = allocation + THREAD_CALL_TID_OFFSET;
+    trampoline_addr = allocation + THREAD_CALL_TRAMPOLINE_OFFSET;
+
+    build_thread_call_stub(stub, func_runtime);
+
+    for (i = 0; i < THREAD_CALL_STUB_WORDS; ++i) {
+        if (poke_word(tid, stub_addr + (unsigned long)(i * sizeof(uint32_t)), stub[i]) != 0) {
+            perror("write thread call stub");
+            return -1;
+        }
+    }
+    if (poke_word(tid, tid_slot_addr, 0) != 0) {
+        perror("write remote tid slot");
+        return -1;
+    }
+
+    for (i = 0; i < CACHEFLUSH_TRAMPOLINE_WORDS; ++i) {
+        if (poke_word(tid, trampoline_addr + (unsigned long)(i * sizeof(uint32_t)),
+                      cacheflush_trampoline[i]) != 0) {
+            perror("write cacheflush trampoline");
+            return -1;
+        }
+    }
+
+    if (remote_call(tid,
+                    trampoline_addr,
+                    cfg->trap_addr,
+                    stub_addr,
+                    stub_addr + (unsigned long)(THREAD_CALL_STUB_WORDS * sizeof(uint32_t)),
+                    0,
+                    0,
+                    NULL,
+                    0,
+                    cfg->wait_timeout_seconds,
+                    cfg->verbose,
+                    NULL) != 0) {
+        fprintf(stderr,
+                "warning: cacheflush trampoline failed (thread stub may still work on this kernel)\n");
+    }
+
+    if (remote_call(tid,
+                    thread_create_runtime,
+                    cfg->trap_addr,
+                    tid_slot_addr,
+                    stub_addr,
+                    (unsigned long)cfg->arg0,
+                    cfg->thread_stack_size,
+                    stack_words,
+                    1,
+                    cfg->wait_timeout_seconds,
+                    cfg->verbose,
+                    &thread_create_result) != 0) {
+        perror("remote ak_thread_create");
+        return -1;
+    }
+    if (thread_create_result != 0) {
+        fprintf(stderr, "ak_thread_create returned 0x%08lx\n", thread_create_result);
+        errno = ECHILD;
+        return -1;
+    }
+    if (peek_word(tid, tid_slot_addr, &created_tid) != 0) {
+        perror("peek remote thread id");
+        return -1;
+    }
+
+    fprintf(stderr,
+            "spawned remote thread for function call: stub=0x%08lx tid_slot=0x%08lx thread_id=0x%08lx\n",
+            stub_addr,
+            tid_slot_addr,
+            created_tid);
+    return 0;
 }
 
 static int install_video_chain(const config_t *cfg,
@@ -676,6 +837,7 @@ static int install_video_chain(const config_t *cfg,
                     0,
                     NULL,
                     0,
+                    cfg->wait_timeout_seconds,
                     cfg->verbose,
                     &allocation) != 0) {
         perror("remote malloc");
@@ -731,6 +893,7 @@ static int install_video_chain(const config_t *cfg,
                         0,
                         NULL,
                         0,
+                        cfg->wait_timeout_seconds,
                         cfg->verbose,
                         NULL) != 0) {
             fprintf(stderr,
@@ -776,6 +939,7 @@ int main(int argc, char **argv)
     unsigned long guard_runtime = 0;
     unsigned long guard_value = 0;
     unsigned long malloc_runtime = 0;
+    unsigned long thread_create_runtime = 0;
     unsigned long video_send_runtime = 0;
     unsigned long video_slot0_runtime = 0;
     unsigned long video_slot1_runtime = 0;
@@ -790,12 +954,15 @@ int main(int argc, char **argv)
     cfg.guard_vaddr = DEFAULT_GUARD_VADDR;
     cfg.trap_addr = DEFAULT_TRAP_ADDR;
     cfg.malloc_vaddr = DEFAULT_MALLOC_VADDR;
+    cfg.thread_create_vaddr = DEFAULT_THREAD_CREATE_VADDR;
+    cfg.thread_stack_size = DEFAULT_THREAD_STACK_SIZE;
     cfg.video_send_vaddr = DEFAULT_VIDEO_SEND_VADDR;
     cfg.video_slot0_vaddr = DEFAULT_VIDEO_SLOT0_VADDR;
     cfg.video_slot1_vaddr = DEFAULT_VIDEO_SLOT1_VADDR;
     cfg.expected_video_cb0_vaddr = DEFAULT_EXPECTED_VIDEO_CB0_VADDR;
     cfg.expected_video_cb1_vaddr = DEFAULT_EXPECTED_VIDEO_CB1_VADDR;
     cfg.peek_words = 1;
+    cfg.wait_timeout_seconds = DEFAULT_WAIT_TIMEOUT_SECONDS;
 
     for (i = 1; i < argc; ++i) {
         const char *arg = argv[i];
@@ -804,6 +971,8 @@ int main(int argc, char **argv)
             cfg.dry_run = true;
         } else if (strcmp(arg, "--install-video-chain") == 0) {
             cfg.install_video_chain = true;
+        } else if (strcmp(arg, "--call-in-new-thread") == 0) {
+            cfg.call_in_new_thread = true;
         } else if (strcmp(arg, "--no-guard-check") == 0) {
             cfg.no_guard_check = true;
         } else if (strcmp(arg, "--no-start-call") == 0) {
@@ -838,6 +1007,13 @@ int main(int argc, char **argv)
                 return 2;
             }
             cfg.arg3 = (int)parsed;
+        } else if (strcmp(arg, "--wait-timeout") == 0) {
+            long parsed = 0;
+            if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0 || parsed <= 0) {
+                fprintf(stderr, "invalid value for --wait-timeout\n");
+                return 2;
+            }
+            cfg.wait_timeout_seconds = (int)parsed;
         } else if (strcmp(arg, "--func-vaddr") == 0) {
             if (i + 1 >= argc || parse_ulong_arg(argv[++i], &cfg.func_vaddr) != 0) {
                 fprintf(stderr, "invalid value for --func-vaddr\n");
@@ -858,6 +1034,18 @@ int main(int argc, char **argv)
                 fprintf(stderr, "invalid value for --malloc-vaddr\n");
                 return 2;
             }
+        } else if (strcmp(arg, "--thread-create-vaddr") == 0) {
+            if (i + 1 >= argc || parse_ulong_arg(argv[++i], &cfg.thread_create_vaddr) != 0) {
+                fprintf(stderr, "invalid value for --thread-create-vaddr\n");
+                return 2;
+            }
+        } else if (strcmp(arg, "--thread-stack-size") == 0) {
+            unsigned long parsed = 0;
+            if (i + 1 >= argc || parse_ulong_arg(argv[++i], &parsed) != 0 || parsed == 0) {
+                fprintf(stderr, "invalid value for --thread-stack-size\n");
+                return 2;
+            }
+            cfg.thread_stack_size = parsed;
         } else if (strcmp(arg, "--video-send-vaddr") == 0) {
             if (i + 1 >= argc || parse_ulong_arg(argv[++i], &cfg.video_send_vaddr) != 0) {
                 fprintf(stderr, "invalid value for --video-send-vaddr\n");
@@ -922,6 +1110,19 @@ int main(int argc, char **argv)
         return 2;
     }
 
+    if (cfg.install_video_chain && cfg.call_in_new_thread) {
+        fprintf(stderr, "--install-video-chain and --call-in-new-thread cannot be used together\n");
+        return 2;
+    }
+    if (cfg.call_in_new_thread && cfg.no_start_call) {
+        fprintf(stderr, "--no-start-call is not meaningful with --call-in-new-thread\n");
+        return 2;
+    }
+    if (cfg.call_in_new_thread && cfg.thread_create_vaddr == 0) {
+        fprintf(stderr, "--call-in-new-thread requires --thread-create-vaddr\n");
+        return 2;
+    }
+
     /* Resolve the ELF base address once — this reads /proc/pid/exe and
      * /proc/pid/maps a single time instead of once per address. */
     if (resolve_base(cfg.tid, &elf_type, exe_path, sizeof(exe_path), &map_base) != 0) {
@@ -934,8 +1135,13 @@ int main(int argc, char **argv)
     } else {
         func_runtime  = apply_base(elf_type, cfg.func_vaddr, map_base);
         guard_runtime = apply_base(elf_type, cfg.guard_vaddr, map_base);
-        if (cfg.install_video_chain) {
+        if (cfg.install_video_chain || cfg.call_in_new_thread) {
             malloc_runtime             = apply_base(elf_type, cfg.malloc_vaddr, map_base);
+        }
+        if (cfg.call_in_new_thread) {
+            thread_create_runtime      = apply_base(elf_type, cfg.thread_create_vaddr, map_base);
+        }
+        if (cfg.install_video_chain) {
             video_send_runtime         = apply_base(elf_type, cfg.video_send_vaddr, map_base);
             video_slot0_runtime        = apply_base(elf_type, cfg.video_slot0_vaddr, map_base);
             video_slot1_runtime        = apply_base(elf_type, cfg.video_slot1_vaddr, map_base);
@@ -950,7 +1156,7 @@ int main(int argc, char **argv)
     }
     attached = true;
 
-    if (wait_for_stop(cfg.tid, &wait_status) != 0) {
+    if (wait_for_stop(cfg.tid, &wait_status, DEFAULT_WAIT_TIMEOUT_SECONDS) != 0) {
         perror("waitpid after attach");
         call_status = 1;
         goto cleanup;
@@ -1010,7 +1216,7 @@ int main(int argc, char **argv)
 
     if (!cfg.install_video_chain && !cfg.no_guard_check && guard_value != 0) {
         fprintf(stderr,
-                "refusing to call ht_rtsp_start because guard is non-zero "
+                "refusing to call target function because guard is non-zero "
                 "(0x%08lx). Use --no-guard-check to override.\n",
                 guard_value);
         call_status = 3;
@@ -1030,6 +1236,15 @@ int main(int argc, char **argv)
                 call_status = 1;
                 goto cleanup;
             }
+        } else if (cfg.call_in_new_thread) {
+            if (spawn_thread_call(&cfg,
+                                  cfg.tid,
+                                  malloc_runtime,
+                                  thread_create_runtime,
+                                  func_runtime) != 0) {
+                call_status = 1;
+                goto cleanup;
+            }
         }
         call_status = 0;
         goto cleanup;
@@ -1046,20 +1261,32 @@ int main(int argc, char **argv)
         }
 
         if (!skip_start_call) {
-            if (remote_call(cfg.tid,
-                            func_runtime,
-                            cfg.trap_addr,
-                            (unsigned long)cfg.arg0,
-                            (unsigned long)cfg.arg1,
-                            (unsigned long)cfg.arg2,
-                            (unsigned long)cfg.arg3,
-                            NULL,
-                            0,
-                            cfg.verbose,
-                            NULL) != 0) {
-                perror("remote ht_rtsp_start");
-                call_status = 1;
-                goto cleanup;
+            if (cfg.call_in_new_thread) {
+                if (spawn_thread_call(&cfg,
+                                      cfg.tid,
+                                      malloc_runtime,
+                                      thread_create_runtime,
+                                      func_runtime) != 0) {
+                    call_status = 1;
+                    goto cleanup;
+                }
+            } else {
+                if (remote_call(cfg.tid,
+                                func_runtime,
+                                cfg.trap_addr,
+                                (unsigned long)cfg.arg0,
+                                (unsigned long)cfg.arg1,
+                                (unsigned long)cfg.arg2,
+                                (unsigned long)cfg.arg3,
+                                NULL,
+                                0,
+                                cfg.wait_timeout_seconds,
+                                cfg.verbose,
+                                NULL) != 0) {
+                    perror("remote function call");
+                    call_status = 1;
+                    goto cleanup;
+                }
             }
         }
     }
@@ -1088,8 +1315,10 @@ cleanup:
         }
     }
 
-    if (call_status == 0 && !cfg.dry_run && !cfg.peek_mode && !cfg.install_video_chain) {
-        fprintf(stderr, "ht_rtsp_start one-shot call completed and registers were restored\n");
+    if (call_status == 0 && !cfg.dry_run && !cfg.peek_mode && cfg.call_in_new_thread) {
+        fprintf(stderr, "remote thread call was started and target thread was detached cleanly\n");
+    } else if (call_status == 0 && !cfg.dry_run && !cfg.peek_mode && !cfg.install_video_chain) {
+        fprintf(stderr, "remote function call completed and registers were restored\n");
     } else if (call_status == 0 && !cfg.dry_run && cfg.install_video_chain) {
         fprintf(stderr, "video chain install completed and target thread was detached cleanly\n");
     }

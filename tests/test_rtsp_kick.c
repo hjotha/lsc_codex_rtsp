@@ -109,6 +109,7 @@ static bool path_matches_exe(const char *map_path, const char *exe_path)
 
 /* Video chain stub builder — must match src/rtsp_kick.c after fixes. */
 #define VIDEO_CHAIN_STUB_WORDS 26
+#define THREAD_CALL_STUB_WORDS 8
 
 static void build_video_chain_stub(uint32_t *words,
                                    unsigned long original_callback,
@@ -148,6 +149,23 @@ static void build_video_chain_stub(uint32_t *words,
     words[16] = 0xe3a00000U | (uint32_t)(channel_id & 0xffU);
     words[24] = (uint32_t)original_callback;
     words[25] = (uint32_t)video_send_callback;
+}
+
+static void build_thread_call_stub(uint32_t *words, unsigned long func_addr)
+{
+    static const uint32_t template_words[THREAD_CALL_STUB_WORDS] = {
+        0xe92d4010, /* [0] push {r4, lr}       ; keep stack 8-byte aligned */
+        0xe1a04000, /* [1] mov r4, r0          ; save thread argument      */
+        0xe1a00004, /* [2] mov r0, r4          ; pass as callee arg0       */
+        0xe59fc008, /* [3] ldr ip, [pc, #8]    ; =target function          */
+        0xe12fff3c, /* [4] blx ip              ; call target function      */
+        0xe3a00000, /* [5] mov r0, #0          ; thread return value       */
+        0xe8bd8010, /* [6] pop {r4, pc}                                  */
+        0x00000000, /* [7] literal: target function                       */
+    };
+
+    memcpy(words, template_words, sizeof(template_words));
+    words[7] = (uint32_t)func_addr;
 }
 
 /* ================================================================
@@ -393,6 +411,34 @@ static void test_build_video_chain_stub(void)
     PASS();
 }
 
+static void test_build_thread_call_stub(void)
+{
+    uint32_t words[THREAD_CALL_STUB_WORDS];
+
+    TEST("build_thread_call_stub: target function literal");
+    build_thread_call_stub(words, 0x0007c6c0UL);
+    assert(words[7] == 0x0007c6c0U);
+    PASS();
+
+    TEST("build_thread_call_stub: preserves thread argument in r4");
+    assert(words[1] == 0xe1a04000U);
+    assert(words[2] == 0xe1a00004U);
+    PASS();
+
+    TEST("build_thread_call_stub: PC-relative load reaches literal");
+    assert(words[3] == 0xe59fc008U);
+    PASS();
+
+    TEST("build_thread_call_stub: returns zero through pthread wrapper");
+    assert(words[5] == 0xe3a00000U);
+    assert(words[6] == 0xe8bd8010U);
+    PASS();
+
+    TEST("build_thread_call_stub: total stub is 8 words");
+    assert(THREAD_CALL_STUB_WORDS == 8);
+    PASS();
+}
+
 static void test_address_resolution(void)
 {
     TEST("address resolution: ET_EXEC returns vaddr directly");
@@ -444,6 +490,7 @@ int main(void)
     test_trim_leading_space();
     test_path_matches_exe();
     test_build_video_chain_stub();
+    test_build_thread_call_stub();
     test_address_resolution();
     test_default_addresses_consistency();
 

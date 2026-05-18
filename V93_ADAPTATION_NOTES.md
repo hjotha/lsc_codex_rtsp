@@ -14,8 +14,9 @@ On `2026-05-01`, live RTSP on both streams confirmed on firmware `V3.2863.93`:
 The boot automation path (SD `hack.sh` + `custom.sh` + `vendor_rtsp_boot.sh`) auto-applies the detour on every cold boot. After reboot the full sequence fires in ~25 seconds and both streams come back up with audio+video present, while the stock `anyka_ipc` keeps running and Tuya port `6668` stays open.
 
 On `2026-05-18`, built-in MP3 speaker playback was also validated on the active
-V93 `quintal` camera at `192.168.1.165`. The missing step was starting the MP3
-decode channel before calling the file playback helper:
+V93 `quintal` camera at `192.168.1.165`. The working path starts the MP3 decode
+channel, sets AO volume, and then runs the stock file playback helper from a
+stock `ak_thread_create` thread:
 
 ```sh
 /tmp/rtsp_kick "$(pidof anyka_ipc)" --verbose \
@@ -27,9 +28,11 @@ decode channel before calling the file playback helper:
 ```
 
 `decode_type=2` is MP3 on this firmware. With that channel open,
-`ht_audio_codec_play_audio_file(0x0037b7b0)` played
-`/usr/share/dingdong.mp3` audibly through the camera speaker. See
-`SPEAKER_PLAYBACK.md` for the full command sequence and sound-path table.
+thread-mode `ht_audio_codec_play_audio_file(0x0037b7b0)` played
+`/usr/share/dingdong.mp3` audibly through the camera speaker. The successful
+post-clean-boot test kept `anyka_ipc` on the same PID and left RTSP/Tuya ports
+open. See `SPEAKER_PLAYBACK.md` for the full command sequence and sound-path
+table.
 
 ## Offsets derived for V3.2863.93
 

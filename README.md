@@ -18,8 +18,9 @@ The sidecar path is now archived under:
 As of `2026-05-01`, the vendor RTSP detour is the recommended hack and now supports two firmware versions.
 
 As of `2026-05-18`, stock speaker playback has also been validated on
-`V3.2863.93` by calling the in-process MP3 decoder and playback functions with
-`rtsp_kick`. See `SPEAKER_PLAYBACK.md`.
+`V3.2863.93` by starting the in-process MP3 decoder and spawning the stock file
+playback helper through `ak_thread_create` with `rtsp_kick`. See
+`SPEAKER_PLAYBACK.md`.
 
 Validated firmwares:
 
@@ -36,7 +37,7 @@ What is already proven:
 - the same camera survived a full unplug/replug power cycle and came back with the detour auto-applied from the SD bootstrap
 - the stock `anyka_ipc` process remains alive
 - built-in MP3 assets can be played through the camera speaker on `V3.2863.93`
-  using `scripts/play_speaker_mp3_v93.sh`
+  using `scripts/play_speaker_mp3_v93.sh` in thread mode
 - the stock vendor RTSP server responds on:
   `88`
   `89`
@@ -289,7 +290,8 @@ The upload is volatile by design:
 ## Speaker playback
 
 Speaker audio is not an RTSP backchannel. The working path is to call the stock
-audio helpers inside `anyka_ipc` with `rtsp_kick`.
+audio helpers inside `anyka_ipc` with `rtsp_kick`, with the actual file
+playback helper running in a stock `ak_thread_create` thread.
 
 Validated V3.2863.93 test:
 
@@ -300,7 +302,15 @@ bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 dingdong 10
 The critical detail is that the MP3 decoder must be started first with
 `ht_audio_codec_start_decode(channel=0, decode_type=2)`. Calling
 `ht_audio_codec_play_audio_file` directly can toggle AO logs without producing
-audible output.
+audible output, and direct same-thread playback was unstable during live tests.
+The helper defaults to the validated thread-mode call path.
+
+For an arbitrary local MP3, pass the file path; the helper uploads it to
+`/tmp/speaker.wav` before playback:
+
+```bash
+bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./chime.mp3 10
+```
 
 Full notes and addresses are in `SPEAKER_PLAYBACK.md`.
 
