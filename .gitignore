@@ -3,3 +3,11 @@ out/
 __pycache__/
 toolchain/
 firmware_dumps/
+jarvis_wake/jarvis_wake
+jarvis_wake/templates/*.raw
+jarvis_wake/captures/*.raw
+jarvis_wake/captures/*.wav
+jarvis_wake/captures/*.alaw
+jarvis_wake/captures/*.txt
+jarvis_wake/captures/positive_candidates_*.raw
+jarvis_wake/captures/positive_candidates_*.wav

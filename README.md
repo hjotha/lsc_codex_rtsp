@@ -34,6 +34,8 @@ See `BUNDLE_COMPATIBILITY.md` for the package-to-package comparison between
 the `V3.2863.105` and `V3.2863.93` SD bundles.
 See `TEMPERATURE_SENSOR_NOTES.md` for the inactive baby-monitor temperature
 sensor path found in the stock binaries.
+See `JARVIS_WAKE_ARMV5_PLAN.md` and `JARVIS_WAKE_ARMV5_FINDINGS.md` for the
+experimental local `Jarvis` wake-word prototype for the ARMv5 camera hardware.
 
 What is already proven:
 
