@@ -34,6 +34,14 @@ post-clean-boot test kept `anyka_ipc` on the same PID and left RTSP/Tuya ports
 open. See `SPEAKER_PLAYBACK.md` for the full command sequence and sound-path
 table.
 
+Generated MP3 playback was validated later the same day with a file encoded as
+8000 Hz mono 64 kbps MP3 and uploaded to `/tmp/speaker.mp3`. The important
+implementation detail is that the playback call must receive a `.mp3` path:
+`rtsp_kick --arg0-string /tmp/speaker.mp3` allocates that string inside
+`anyka_ipc` and passes the remote pointer to `ht_audio_codec_play_audio_file`.
+The old `/tmp/speaker.wav` firmware string restarted `anyka_ipc` with generated
+MP3s and should not be used for this path.
+
 ## Offsets derived for V3.2863.93
 
 All via `.dynsym` comparison against V3.2863.105, backed by live `--peek-vaddr` verification on the running camera.

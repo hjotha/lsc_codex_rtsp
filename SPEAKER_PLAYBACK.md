@@ -11,9 +11,14 @@ Validated on `2026-05-18` against the `quintal` camera:
 - firmware class: `V3.2863.93`
 - stock `anyka_ipc` md5: `87f1683cee35353fb2c2be20353bf59c`
 - result: audible `dingdong` MP3 playback confirmed at the camera
+- result: generated host MP3 playback confirmed at the camera when encoded as
+  8000 Hz mono 64 kbps and played from a `.mp3` path
 - stability check: after the successful thread-mode playback, `anyka_ipc`
   stayed on PID `557`, uptime continued from `147s` to `238s`, and ports
   `24`, `88`, `89`, and `6668` stayed open
+- generated-MP3 stability check: after playing `out/v93_loud_tone_8k64.mp3`
+  from `/tmp/speaker.mp3`, `anyka_ipc` stayed on PID `1045`, uptime continued
+  from `1096s` to `1198s`, and ports `24`, `88`, `89`, and `6668` stayed open
 
 ## Current State From Live Testing
 
@@ -29,6 +34,9 @@ Live test state on `2026-05-18`:
 - after a clean reboot, spawning `ht_audio_codec_play_audio_file` through
   stock `ak_thread_create` played `dingdong` audibly and did not restart
   `anyka_ipc`
+- generated 8000 Hz mono 64 kbps MP3s play when the remote path ends in
+  `.mp3`; the same generated MP3 passed through the old
+  `/tmp/speaker.wav` path restarted `anyka_ipc`
 
 Important stability finding:
 
@@ -39,6 +47,9 @@ Important stability finding:
 - increasing the ptrace wait with `--wait-timeout 30` did not fix direct mode
 - the validated path is therefore the thread-mode helper, not the old direct
   same-thread playback call
+- the validated generated-file path uses `/tmp/speaker.mp3` plus
+  `rtsp_kick --arg0-string /tmp/speaker.mp3`; do not use the old
+  `/tmp/speaker.wav` string for MP3 playback
 
 The issue was not speaker volume. The stock MP3 decoder channel had not been
 started. Calling `ht_audio_codec_play_audio_file` directly toggled the AO path
@@ -95,26 +106,37 @@ Available built-in sound names:
 - `siren`
 - `hutong1`
 - `hutong2`
-- `tmp` for an already-uploaded `/tmp/speaker.wav`
+- `tmp` for an already-uploaded `/tmp/speaker.mp3`
+- `tmp-wav` for the legacy `/tmp/speaker.wav` firmware string. This is kept
+  only for investigation and should not be used for generated MP3 playback.
 
-Local MP3 files are experimental. A live test with a host-generated MP3 uploaded
-to `/tmp/speaker.wav` did not play and restarted `anyka_ipc`; the camera itself
-did not reboot and RTSP was rearmed automatically. To avoid accidental process
-restarts, local file playback is gated:
+Local MP3 files are accepted automatically only when they match the validated
+V93 envelope: MP3, 8000 Hz, mono, 64 kbps, no ID3 header. Encode with:
 
 ```bash
-PLAY_ALLOW_LOCAL_MP3=1 bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./chime.mp3 10
+scripts/encode_speaker_mp3_v93.sh input.wav out/chime_v93.mp3
+bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 out/chime_v93.mp3 10
 ```
 
-When enabled, the helper uploads the file to `/tmp/speaker.wav` first, using
+When enabled, the helper uploads the file to `/tmp/speaker.mp3` first, using
 the netcat uploader when available and falling back to the base64 telnet
-uploader otherwise.
+uploader otherwise. It then calls `ht_audio_codec_play_audio_file` with a
+remote heap string containing `/tmp/speaker.mp3`.
+
+Unsafe local MP3s can still be forced for investigation:
+
+```bash
+PLAY_ALLOW_LOCAL_MP3=1 bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./unknown.mp3 10
+```
+
+This is intentionally explicit because malformed or mismatched MP3s restarted
+`anyka_ipc` during live testing.
 
 The script defaults to `PLAY_CALL_MODE=thread`, which is the validated mode. It
-uses `/tmp/rtsp_kick` if it already supports `--arg1` and
-`--call-in-new-thread`. Otherwise it builds and uploads the current official
-`rtsp_kick` to `/tmp/rtsp_kick` first. The upload is volatile and disappears
-after a camera reboot.
+uses `/tmp/rtsp_kick` if it already supports `--arg1`,
+`--call-in-new-thread`, and `--arg0-string`. Otherwise it builds and uploads
+the current official `rtsp_kick` to `/tmp/rtsp_kick` first. The upload is
+volatile and disappears after a camera reboot.
 
 ## MP3 Format Findings
 
@@ -154,6 +176,11 @@ Failed local-file tests:
   not a usable prompt format.
 - The local LAME encoder could not produce a true 8000 Hz mono 96 kbps file:
   requests for 80/96/112/128 kbps at 8000 Hz all produced 64 kbps frames.
+- A generated 8000 Hz mono 64 kbps file also restarted `anyka_ipc` when played
+  through the legacy `/tmp/speaker.wav` firmware string. The same format played
+  after changing the path to `/tmp/speaker.mp3`, first by bind-mounting over
+  `/usr/share/dingdong.mp3` for proof and then through the official
+  `rtsp_kick --arg0-string /tmp/speaker.mp3` path.
 
 Validated high-quality factory control:
 
@@ -163,9 +190,62 @@ Validated high-quality factory control:
 - `anyka_ipc` stayed on PID `557` and ports `24`, `88`, `89`, and `6668`
   remained open after playback.
 
-Current recommendation: use built-in factory assets for reliable playback.
-Treat `/tmp/speaker.wav` and local-file upload as an unsafe test path until a
-specific encoding pipeline is proven not to restart `anyka_ipc`.
+Validated generated format:
+
+- MP3, MPEG Layer III v2.5
+- 8000 Hz
+- mono
+- 64 kbps CBR
+- no ID3 header and no Xing/LAME metadata frame
+- path on camera: `/tmp/speaker.mp3`, not `/tmp/speaker.wav`
+
+Recipe:
+
+```bash
+scripts/encode_speaker_mp3_v93.sh input.wav out/chime_v93.mp3
+bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 out/chime_v93.mp3 10
+```
+
+Equivalent raw `ffmpeg` form:
+
+```bash
+ffmpeg -y -i input.wav -vn -sn -dn -map_metadata -1 \
+  -af 'apad=pad_dur=0.2' \
+  -ar 8000 -ac 1 -codec:a libmp3lame -b:a 64k \
+  -write_xing 0 -id3v2_version 0 -write_id3v1 0 \
+  out/chime_v93.mp3
+```
+
+The validated audible test used a louder 1 kHz tone, volume argument `20`, and
+played successfully. That run logged `db =50, db must in [-90, 20]`, so `10`
+remains the conservative helper example volume until the stock volume mapping
+is better understood.
+
+## Speech Server TTS
+
+The deployed speech-server on `192.168.1.70:18070` supports a camera-ready TTS
+format:
+
+```bash
+curl -sS -H 'content-type: application/json' \
+  --data '{"text":"Teste da camera do quintal.","engine":"kokoro","voice":"pm_alex","format":"mp3-v93"}' \
+  http://192.168.1.70:18070/v1/tts \
+  -o out/camera_prompt.mp3
+
+bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 out/camera_prompt.mp3 10
+```
+
+`format: "mp3-v93"` returns `audio/mpeg` with header
+`x-speech-server-format: mp3-v93`. The returned file is the validated camera
+format: 8000 Hz, mono, 64 kbps MP3, no ID3 header.
+
+Live validation on `2026-05-18`:
+
+- speech-server `0.2.2` generated `out/speech_server_v93_test.mp3`
+- `ffprobe`: MP3, 8000 Hz, mono, 64 kbps, duration `4.896s`
+- the user confirmed the phrase played through the `quintal` camera
+- `anyka_ipc` stayed on PID `1045`, uptime continued from `1792s` to `1897s`,
+  and ports `24`, `88`, `89`, and `6668` stayed open
 
 ## Manual V93 Sequence
 
@@ -202,6 +282,22 @@ PID="$(pidof anyka_ipc | awk '{print $1}')"
   --no-guard-check
 ```
 
+For generated MP3s, upload the file to `/tmp/speaker.mp3` and pass that path as
+a remote string:
+
+```sh
+/tmp/rtsp_kick "$PID" --verbose \
+  --func-vaddr 0x0007c6c0 \
+  --guard-vaddr 0x0051ab34 \
+  --arg0-string /tmp/speaker.mp3 \
+  --call-in-new-thread \
+  --malloc-vaddr 0x000607b4 \
+  --thread-create-vaddr 0x0012208c \
+  --thread-stack-size 0x10000 \
+  --wait-timeout 30 \
+  --no-guard-check
+```
+
 Useful log check:
 
 ```sh
@@ -214,6 +310,7 @@ tail -120 /var/log/messages | grep -E 'ADEC|AO|playback|MP3|source|volume'
 |---|---:|
 | RTSP guard reused for safe attach override | `0x0051ab34` |
 | `ht_audio_codec_start_decode` | `0x0007c27c` |
+| `ht_audio_codec_stop_decode` | `0x0007c590` |
 | `ht_audio_codec_play_audio_file` | `0x0007c6c0` |
 | `ht_audio_codec_set_ao_volume` | `0x0007cf9c` |
 | `ak_adec_print_runtime_status` | `0x000cba60` |
@@ -242,6 +339,7 @@ Speaker playback needs a function call with both `r0` and `r1`. The official
 - `--arg1`
 - `--arg2`
 - `--arg3`
+- `--arg0-string TEXT`
 - `--wait-timeout N`
 - `--call-in-new-thread`
 - `--thread-create-vaddr`
@@ -252,4 +350,6 @@ That keeps the helper generic: RTSP boot still uses the default
 with explicit `--func-vaddr` and register arguments. Thread mode allocates a
 small remote stub with `malloc@plt`, flushes it, and starts it through stock
 `ak_thread_create`; the playback function receives `--arg0` as its thread
-argument.
+argument. `--arg0-string` allocates a NUL-terminated string inside `anyka_ipc`
+and uses that remote pointer as `r0`, which is required for generated MP3 paths
+like `/tmp/speaker.mp3`.

@@ -76,10 +76,10 @@ typedef struct {
 
 typedef struct {
     pid_t tid;
-    int arg0;
-    int arg1;
-    int arg2;
-    int arg3;
+    unsigned long arg0;
+    unsigned long arg1;
+    unsigned long arg2;
+    unsigned long arg3;
     unsigned long func_vaddr;
     unsigned long guard_vaddr;
     unsigned long trap_addr;
@@ -92,6 +92,7 @@ typedef struct {
     unsigned long expected_video_cb0_vaddr;
     unsigned long expected_video_cb1_vaddr;
     unsigned long peek_vaddr;
+    const char *arg0_string;
     bool dry_run;
     bool install_video_chain;
     bool call_in_new_thread;
@@ -99,6 +100,8 @@ typedef struct {
     bool no_start_call;
     bool peek_mode;
     bool verbose;
+    bool arg0_was_set;
+    bool arg0_string_set;
     int peek_words;
     int wait_timeout_seconds;
 } config_t;
@@ -117,6 +120,7 @@ static void usage(FILE *stream, const char *argv0)
             "  --no-guard-check        continue even if the RTSP guard is non-zero\n"
             "  --verbose               print extra diagnostics\n"
             "  --arg0 N                argument passed in r0 (default: 0)\n"
+            "  --arg0-string TEXT      malloc TEXT in the target and pass that pointer in r0\n"
             "  --arg1 N                argument passed in r1 (default: 0)\n"
             "  --arg2 N                argument passed in r2 (default: 0)\n"
             "  --arg3 N                argument passed in r3 (default: 0)\n"
@@ -436,6 +440,30 @@ static int poke_word(pid_t tid, unsigned long addr, unsigned long value)
     return 0;
 }
 
+static int poke_bytes(pid_t tid, unsigned long addr, const unsigned char *data, size_t data_len)
+{
+    size_t offset = 0;
+
+    while (offset < data_len) {
+        unsigned long word = 0;
+        size_t i = 0;
+        size_t remaining = data_len - offset;
+        size_t chunk = remaining < sizeof(unsigned long) ? remaining : sizeof(unsigned long);
+
+        for (i = 0; i < chunk; ++i) {
+            word |= ((unsigned long)data[offset + i]) << (8U * i);
+        }
+
+        if (poke_word(tid, addr + (unsigned long)offset, word) != 0) {
+            return -1;
+        }
+
+        offset += sizeof(unsigned long);
+    }
+
+    return 0;
+}
+
 static int remote_call(pid_t tid,
                        unsigned long func_addr,
                        unsigned long trap_addr,
@@ -551,6 +579,71 @@ restore:
     if (call_status != 0) {
         return -1;
     }
+    return 0;
+}
+
+static int allocate_remote_string(const config_t *cfg,
+                                  pid_t tid,
+                                  unsigned long malloc_runtime,
+                                  const char *text,
+                                  unsigned long *remote_addr)
+{
+    unsigned char *buffer = NULL;
+    unsigned long allocation = 0;
+    size_t text_len = strlen(text) + 1U;
+    size_t padded_len = ((text_len + sizeof(unsigned long) - 1U) / sizeof(unsigned long)) *
+                        sizeof(unsigned long);
+
+    if (malloc_runtime == 0) {
+        fprintf(stderr, "--arg0-string requires a valid --malloc-vaddr\n");
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (remote_call(tid,
+                    malloc_runtime,
+                    cfg->trap_addr,
+                    (unsigned long)padded_len,
+                    0,
+                    0,
+                    0,
+                    NULL,
+                    0,
+                    cfg->wait_timeout_seconds,
+                    cfg->verbose,
+                    &allocation) != 0) {
+        perror("remote malloc for arg0 string");
+        return -1;
+    }
+    if (allocation == 0) {
+        fprintf(stderr, "remote malloc for arg0 string returned NULL\n");
+        errno = ENOMEM;
+        return -1;
+    }
+
+    buffer = calloc(1, padded_len);
+    if (buffer == NULL) {
+        return -1;
+    }
+    memcpy(buffer, text, text_len);
+
+    if (poke_bytes(tid, allocation, buffer, padded_len) != 0) {
+        free(buffer);
+        perror("write remote arg0 string");
+        return -1;
+    }
+
+    free(buffer);
+    *remote_addr = allocation;
+
+    if (cfg->verbose) {
+        fprintf(stderr,
+                "wrote arg0 string at 0x%08lx (%lu bytes): %s\n",
+                allocation,
+                (unsigned long)text_len,
+                text);
+    }
+
     return 0;
 }
 
@@ -676,10 +769,10 @@ static int spawn_thread_call(const config_t *cfg,
     if (cfg->dry_run) {
         fprintf(stderr,
                 "dry-run: would malloc(0x%08lx), write a %lu-byte thread stub, "
-                "and call ak_thread_create(stub, arg=0x%08x)\n",
+                "and call ak_thread_create(stub, arg=0x%08lx)\n",
                 (unsigned long)THREAD_CALL_ALLOC_SIZE,
                 (unsigned long)(THREAD_CALL_STUB_WORDS * sizeof(uint32_t)),
-                (unsigned int)cfg->arg0);
+                cfg->arg0);
         return 0;
     }
 
@@ -980,33 +1073,41 @@ int main(int argc, char **argv)
         } else if (strcmp(arg, "--verbose") == 0) {
             cfg.verbose = true;
         } else if (strcmp(arg, "--arg0") == 0) {
-            long parsed = 0;
-            if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0) {
+            if (cfg.arg0_string_set) {
+                fprintf(stderr, "--arg0 and --arg0-string cannot be used together\n");
+                return 2;
+            }
+            if (i + 1 >= argc || parse_ulong_arg(argv[++i], &cfg.arg0) != 0) {
                 fprintf(stderr, "invalid value for --arg0\n");
                 return 2;
             }
-            cfg.arg0 = (int)parsed;
+            cfg.arg0_was_set = true;
+        } else if (strcmp(arg, "--arg0-string") == 0) {
+            if (cfg.arg0_was_set) {
+                fprintf(stderr, "--arg0 and --arg0-string cannot be used together\n");
+                return 2;
+            }
+            if (i + 1 >= argc || argv[i + 1][0] == '\0') {
+                fprintf(stderr, "invalid value for --arg0-string\n");
+                return 2;
+            }
+            cfg.arg0_string = argv[++i];
+            cfg.arg0_string_set = true;
         } else if (strcmp(arg, "--arg1") == 0) {
-            long parsed = 0;
-            if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0) {
+            if (i + 1 >= argc || parse_ulong_arg(argv[++i], &cfg.arg1) != 0) {
                 fprintf(stderr, "invalid value for --arg1\n");
                 return 2;
             }
-            cfg.arg1 = (int)parsed;
         } else if (strcmp(arg, "--arg2") == 0) {
-            long parsed = 0;
-            if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0) {
+            if (i + 1 >= argc || parse_ulong_arg(argv[++i], &cfg.arg2) != 0) {
                 fprintf(stderr, "invalid value for --arg2\n");
                 return 2;
             }
-            cfg.arg2 = (int)parsed;
         } else if (strcmp(arg, "--arg3") == 0) {
-            long parsed = 0;
-            if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0) {
+            if (i + 1 >= argc || parse_ulong_arg(argv[++i], &cfg.arg3) != 0) {
                 fprintf(stderr, "invalid value for --arg3\n");
                 return 2;
             }
-            cfg.arg3 = (int)parsed;
         } else if (strcmp(arg, "--wait-timeout") == 0) {
             long parsed = 0;
             if (i + 1 >= argc || parse_long_arg(argv[++i], &parsed) != 0 || parsed <= 0) {
@@ -1135,7 +1236,7 @@ int main(int argc, char **argv)
     } else {
         func_runtime  = apply_base(elf_type, cfg.func_vaddr, map_base);
         guard_runtime = apply_base(elf_type, cfg.guard_vaddr, map_base);
-        if (cfg.install_video_chain || cfg.call_in_new_thread) {
+        if (cfg.install_video_chain || cfg.call_in_new_thread || cfg.arg0_string_set) {
             malloc_runtime             = apply_base(elf_type, cfg.malloc_vaddr, map_base);
         }
         if (cfg.call_in_new_thread) {
@@ -1221,6 +1322,22 @@ int main(int argc, char **argv)
                 guard_value);
         call_status = 3;
         goto cleanup;
+    }
+
+    if (cfg.arg0_string_set) {
+        if (cfg.dry_run) {
+            fprintf(stderr,
+                    "dry-run: would malloc and write arg0 string (%lu bytes): %s\n",
+                    (unsigned long)(strlen(cfg.arg0_string) + 1U),
+                    cfg.arg0_string);
+        } else if (allocate_remote_string(&cfg,
+                                          cfg.tid,
+                                          malloc_runtime,
+                                          cfg.arg0_string,
+                                          &cfg.arg0) != 0) {
+            call_status = 1;
+            goto cleanup;
+        }
     }
 
     if (cfg.dry_run) {

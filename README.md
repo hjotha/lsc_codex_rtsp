@@ -305,13 +305,14 @@ The critical detail is that the MP3 decoder must be started first with
 audible output, and direct same-thread playback was unstable during live tests.
 The helper defaults to the validated thread-mode call path.
 
-Local MP3 upload is not considered stable yet. A live test with a generated MP3
-uploaded to `/tmp/speaker.wav` restarted `anyka_ipc` before audible playback,
-even though RTSP recovered automatically. The helper now requires an explicit
-opt-in for that path:
+Generated MP3 playback is validated when the file is encoded to the V93 prompt
+format and played from a `.mp3` path. The stable local-file path uploads to
+`/tmp/speaker.mp3` and uses `rtsp_kick --arg0-string /tmp/speaker.mp3` so the
+stock helper sees a real `.mp3` filename:
 
 ```bash
-PLAY_ALLOW_LOCAL_MP3=1 bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 ./chime.mp3 10
+scripts/encode_speaker_mp3_v93.sh input.wav out/chime_v93.mp3
+bash scripts/play_speaker_mp3_v93.sh 192.168.1.165 out/chime_v93.mp3 10
 ```
 
 Factory MP3s on this camera are narrowband mono prompt files. The highest
@@ -319,9 +320,16 @@ observed factory bitrate is 96 kbps at 8 kHz mono; 16 kHz factory files are
 present, but only up to 24 kbps mono. The highest-bitrate factory file,
 `8k16_en_hutong_wait_for_setup.mp3`, played cleanly through the helper as
 `factory-en-96k`; a generated 16 kHz / 96 kbps file only produced distorted
-noise.
+noise. The validated generated format is MP3, MPEG Layer III v2.5, 8000 Hz,
+mono, 64 kbps CBR, with no ID3/Xing metadata. The old `/tmp/speaker.wav` path
+is not safe for generated MP3s and restarted `anyka_ipc` during live testing.
 
 Full notes and addresses are in `SPEAKER_PLAYBACK.md`.
+
+The Android speech-server at `192.168.1.70:18070` now accepts
+`format: "mp3-v93"` on `POST /v1/tts` for Kokoro TTS. It returns `audio/mpeg`
+already encoded as the camera-safe 8000 Hz mono 64 kbps MP3, and that output
+was validated live on the `quintal` speaker.
 
 ## Boot automation
 
