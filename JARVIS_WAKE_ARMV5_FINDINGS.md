@@ -196,8 +196,9 @@ payload base:             0x6000
 payload size:             0x8000
 payload frame length:     996 bytes
 payload types observed:   0x82 and 0x02
-payload encoding:         PCMA/A-law
-source rate observed:     about 16 kHz
+per-frame header:         16 bytes
+payload encoding:         signed 16-bit little-endian PCM after the header
+source rate observed:     about 8 kHz
 ```
 
 The current prototype has an experimental read-only input for this ring:
@@ -213,19 +214,20 @@ The current prototype has an experimental read-only input for this ring:
   --no-net --profile --verbose
 ```
 
-For `--rate 8000`, the reader assumes the Anyka ring source is 16 kHz by
-default, decodes A-law, and downsamples 2:1 before feeding VAD/DTW. Override
-with `--ak-source-rate 8000` only if another firmware proves the ring already
-runs at 8 kHz.
+For `--rate 8000`, the reader skips the 16-byte frame header and feeds the
+remaining `s16le` samples directly into VAD/DTW.
 
-Validation on `sala` with continuous non-`Jarvis` reference audio near the
-camera:
+Silence validation on `sala` after fixing the frame format:
 
 ```text
-ak_stream path=/tmp/AudioStream desc_count=896 payload_size=32768 source_rate=16000 detector_rate=8000 start_index=380
-profile frames=413 utterances=1 accepted=0 frame_avg_us=48 eval_total_us=763 dtw_total_us=87
+ak_stream path=/tmp/AudioStream desc_count=896 payload_size=32768 frame_header=16 source_rate=8000 detector_rate=8000 start_index=784
+profile frames=407 utterances=0 accepted=0 frame_avg_us=48 eval_total_us=0 dtw_total_us=0
 anyka_ipc pid before/after: 567
 ```
+
+The important correction is that raw zero bytes in `/tmp/AudioStream` represent
+silence after the 16-byte frame header. Treating those bytes as A-law creates a
+false non-silent signal, so the on-camera reader must use the `s16le` path.
 
 This is safer than trying to take ownership of `/dev/akpcm_adc0`: it does not
 change the stock process' file descriptors, it does not require an RTSP client

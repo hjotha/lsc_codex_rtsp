@@ -141,7 +141,7 @@ Camera-specific input options:
 
 - do not read `/dev/akpcm_adc0` directly while `anyka_ipc` owns it; direct open
   and `/proc/<pid>/fd/7` both failed with `Operation not permitted`
-- use `/tmp/AudioStream` first: it is a stock shared PCMA/A-law ring mapped by
+- use `/tmp/AudioStream` first: it is a stock shared PCM ring mapped by
   `anyka_ipc`, and read-only mmap did not disturb the process
 - hook or reuse the internal Anyka AI/AENC callback path only if the shared
   ring cannot provide clean wake-word input
@@ -167,8 +167,9 @@ Current `/tmp/AudioStream` layout on the checked `sala` firmware:
 - payload base: `0x6000`
 - payload size: `0x8000`
 - observed frame length: `996` bytes
-- observed encoding: PCMA/A-law
-- observed source rate: about 16 kHz
+- observed per-frame header: `16` bytes
+- observed encoding after header: signed 16-bit little-endian PCM
+- observed source rate: about 8 kHz
 
 The prototype supports this path with:
 
@@ -176,8 +177,8 @@ The prototype supports this path with:
 ./jarvis_wake --ak-stream /tmp/AudioStream --rate 8000 --template templates/jarvis_01.raw
 ```
 
-With `--rate 8000`, the Anyka reader decodes A-law from the 16 kHz source ring
-and downsamples 2:1 before feeding the detector.
+With `--rate 8000`, the Anyka reader skips the 16-byte frame header and feeds
+the remaining `s16le` samples directly to the detector.
 
 RTSP is not, by itself, the final on-camera live source because the camera does
 not ship ffmpeg/sox and the detector should not grow into a full RTSP/RTP/PCMA

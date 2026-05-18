@@ -35,6 +35,7 @@
 #define AK_STREAM_DESC_SIZE 24
 #define AK_STREAM_DESC_COUNT 896
 #define AK_STREAM_MAX_FRAME_BYTES 2048
+#define AK_STREAM_FRAME_HEADER_BYTES 16
 #define AK_STREAM_MAX_BACKLOG 32
 #define AK_STREAM_LAG_ENTRIES 1
 #define AK_STREAM_POLL_MS 20
@@ -178,8 +179,8 @@ static void usage(FILE *out, const char *argv0)
             "\n"
             "options:\n"
             "  --stdin                  read raw PCM from stdin (default)\n"
-            "  --ak-stream PATH         read Anyka /tmp/AudioStream shared PCMA ring\n"
-            "  --ak-source-rate N       Anyka ring source rate, 8000 or 16000 (default: 16000)\n"
+            "  --ak-stream PATH         read Anyka /tmp/AudioStream shared PCM ring\n"
+            "  --ak-source-rate N       Anyka ring source rate, 8000 or 16000 (default: 8000)\n"
             "  --template PATH          raw Jarvis template, may be repeated\n"
             "  --rate N                 sample rate, 8000 or 16000 (default: 8000)\n"
             "  --threshold N            DTW accept threshold; lower is stricter (default: 90000)\n"
@@ -236,7 +237,7 @@ static void default_config(config_t *cfg)
     cfg->max_utterance_ms = 1400;
     cfg->start_frames = 3;
     cfg->end_frames = 12;
-    cfg->ak_source_rate = 16000;
+    cfg->ak_source_rate = 8000;
     copy_string(cfg->host, sizeof(cfg->host), "192.168.1.70");
     cfg->port = 18070;
     copy_string(cfg->path, sizeof(cfg->path), "/v1/wake");
@@ -1010,27 +1011,6 @@ static uint32_t read_le32(const uint8_t *p)
            ((uint32_t)p[3] << 24);
 }
 
-static int16_t decode_alaw(uint8_t value)
-{
-    int sign;
-    int exponent;
-    int mantissa;
-    int sample;
-
-    value ^= 0x55U;
-    sign = value & 0x80U;
-    exponent = (value & 0x70U) >> 4;
-    mantissa = value & 0x0fU;
-    sample = mantissa << 4;
-    if (exponent == 0) {
-        sample += 8;
-    } else {
-        sample += 0x108;
-        sample <<= exponent - 1;
-    }
-    return (int16_t)(sign ? sample : -sample);
-}
-
 static int ak_stream_read_index(const uint8_t *map, uint32_t *index)
 {
     uint32_t value = read_le32(map + AK_STREAM_HEADER_OFFSET + 4);
@@ -1072,34 +1052,38 @@ static void ak_stream_process_entry(detector_t *det, const uint8_t *map,
                                     const ak_stream_entry_t *entry)
 {
     int16_t samples[AK_STREAM_MAX_FRAME_BYTES];
+    uint8_t frame[AK_STREAM_MAX_FRAME_BYTES];
     const uint8_t *payload = map + AK_STREAM_PAYLOAD_BASE;
     uint32_t off = entry->payload_offset;
     uint32_t i;
     int out_count = 0;
 
+    for (i = 0; i < entry->length; i++) {
+        frame[i] = payload[off];
+        off++;
+        if (off == AK_STREAM_PAYLOAD_SIZE) {
+            off = 0;
+        }
+    }
+    if (entry->length <= AK_STREAM_FRAME_HEADER_BYTES + 1U) {
+        return;
+    }
+
     if (det->cfg->ak_source_rate == det->cfg->sample_rate) {
-        for (i = 0; i < entry->length; i++) {
-            samples[out_count++] = decode_alaw(payload[off]);
-            off++;
-            if (off == AK_STREAM_PAYLOAD_SIZE) {
-                off = 0;
-            }
+        for (i = AK_STREAM_FRAME_HEADER_BYTES; i + 1 < entry->length; i += 2) {
+            uint16_t lo = frame[i];
+            uint16_t hi = frame[i + 1];
+            samples[out_count++] = (int16_t)(lo | (hi << 8));
         }
     } else {
-        for (i = 0; i + 1 < entry->length; i += 2) {
-            int32_t a = decode_alaw(payload[off]);
-            off++;
-            if (off == AK_STREAM_PAYLOAD_SIZE) {
-                off = 0;
-            }
-            {
-                int32_t b = decode_alaw(payload[off]);
-                off++;
-                if (off == AK_STREAM_PAYLOAD_SIZE) {
-                    off = 0;
-                }
-                samples[out_count++] = (int16_t)((a + b) / 2);
-            }
+        for (i = AK_STREAM_FRAME_HEADER_BYTES; i + 3 < entry->length; i += 4) {
+            uint16_t a_lo = frame[i];
+            uint16_t a_hi = frame[i + 1];
+            uint16_t b_lo = frame[i + 2];
+            uint16_t b_hi = frame[i + 3];
+            int32_t a = (int16_t)(a_lo | (a_hi << 8));
+            int32_t b = (int16_t)(b_lo | (b_hi << 8));
+            samples[out_count++] = (int16_t)((a + b) / 2);
         }
     }
     detector_process_samples(det, samples, out_count);
@@ -1144,8 +1128,9 @@ static int run_ak_stream(detector_t *det, const char *path)
     last_index = (start_index + AK_STREAM_DESC_COUNT - AK_STREAM_LAG_ENTRIES) %
                  AK_STREAM_DESC_COUNT;
     fprintf(stderr,
-            "ak_stream path=%s desc_count=%d payload_size=%d source_rate=%d detector_rate=%d start_index=%u\n",
+            "ak_stream path=%s desc_count=%d payload_size=%d frame_header=%d source_rate=%d detector_rate=%d start_index=%u\n",
             path, AK_STREAM_DESC_COUNT, AK_STREAM_PAYLOAD_SIZE,
+            AK_STREAM_FRAME_HEADER_BYTES,
             det->cfg->ak_source_rate, det->cfg->sample_rate, start_index);
 
     while (!g_stop) {

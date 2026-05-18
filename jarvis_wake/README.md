@@ -69,7 +69,7 @@ Current capture finding:
 - `anyka_ipc` owns `/dev/akpcm_adc0`, `/dev/akpcm_dac0`, and
   `/dev/akpcm_loopback0`
 - `/tmp/AudioStream` is a safer on-camera live input than taking ownership of
-  `/dev/akpcm_adc0`; it is a stock shared PCMA/A-law ring already fed by
+  `/dev/akpcm_adc0`; it is a stock shared PCM ring already fed by
   `anyka_ipc`
 - RTSP should still be treated as the first practical host-side microphone
   capture path for template recording
@@ -104,14 +104,14 @@ descriptor size: 24 bytes
 payload base: 0x6000
 payload size: 0x8000
 payload frame length observed: 996 bytes
-payload encoding: PCMA/A-law
-source rate observed: about 16 kHz
+per-frame header: 16 bytes
+payload encoding: signed 16-bit little-endian PCM after the header
+source rate observed: about 8 kHz
 ```
 
-The reader decodes A-law and downsamples 16 kHz to 8 kHz when `--rate 8000` is
-used, so the existing 8 kHz RTSP templates can still be tested. Use
-`--ak-source-rate 8000` only if a different firmware proves the ring is already
-8 kHz.
+The reader skips the 16-byte frame header and feeds the remaining `s16le` PCM
+directly to the detector. `--ak-source-rate` defaults to `8000`; override it
+only if a different firmware proves the ring uses another sample rate.
 
 ## Run Against A Raw Stream
 
