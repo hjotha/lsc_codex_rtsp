@@ -18,9 +18,9 @@ The sidecar path is now archived under:
 As of `2026-05-01`, the vendor RTSP detour is the recommended hack and now supports two firmware versions.
 
 As of `2026-05-18`, stock speaker playback has also been validated on
-`V3.2863.93` by starting the in-process MP3 decoder and spawning the stock file
-playback helper through `ak_thread_create` with `rtsp_kick`. See
-`SPEAKER_PLAYBACK.md`.
+`V3.2863.93` and `V3.2863.105` by starting the in-process MP3 decoder and
+spawning the stock file playback helper through `ak_thread_create` with
+`rtsp_kick`. See `SPEAKER_PLAYBACK.md`.
 
 Validated firmwares:
 
@@ -30,6 +30,10 @@ Validated firmwares:
 Both use the same model family (LSC rotatable / Tuya / Anyka, `anyka_ipc`), the same SD bundle structure, and the same `rtsp_kick` binary. The per-firmware offsets are selected automatically by `sdcard/vendor_rtsp_boot.sh` based on the MD5 of the running `anyka_ipc`.
 
 See `V93_ADAPTATION_NOTES.md` for the full V3.2863.93 investigation log and the offset table.
+See `BUNDLE_COMPATIBILITY.md` for the package-to-package comparison between
+the `V3.2863.105` and `V3.2863.93` SD bundles.
+See `TEMPERATURE_SENSOR_NOTES.md` for the inactive baby-monitor temperature
+sensor path found in the stock binaries.
 
 What is already proven:
 
@@ -38,6 +42,9 @@ What is already proven:
 - the stock `anyka_ipc` process remains alive
 - built-in MP3 assets can be played through the camera speaker on `V3.2863.93`
   using `scripts/play_speaker_mp3_v93.sh` in thread mode
+- generated MP3/TTS playback has been validated on both the `quintal` V93
+  camera and the `sala` V105 camera when encoded as 8000 Hz mono 64 kbps MP3
+  and played from `/tmp/speaker.mp3`
 - the stock vendor RTSP server responds on:
   `88`
   `89`
@@ -97,7 +104,14 @@ So beginners can use either:
 - `packages/sd_root_v3.2863.93/root/`
 - `sdcard/`
 
-`sdcard/` and both `packages/sd_root_*` bundles ship the same `rtsp_kick` binary and the same MD5-aware `vendor_rtsp_boot.sh`. The only thing that differs between the two `packages/*` bundles is the `vendor_rtsp_boot.md5` hint file, which only matters for the legacy single-firmware guard path. On an unknown camera, using either bundle works as long as the running firmware is one of the two supported MD5s.
+`sdcard/` and both `packages/sd_root_*` bundles ship the same `rtsp_kick`
+binary and the same MD5-aware `vendor_rtsp_boot.sh`. Under the two package
+`root/` directories, the only file that differs is the
+`vendor_rtsp_boot.md5` hint file, which only matters for the legacy
+single-firmware guard path. See `BUNDLE_COMPATIBILITY.md`.
+
+On an unknown camera, using either bundle works as long as the running firmware
+is one of the two supported MD5s.
 
 On the tested camera, keeping both `hack` and `hack.sh` on the SD card is the safest path.
 The known-good backup used:
@@ -239,6 +253,8 @@ Other useful docs and probes:
 - `tools/rtsp_probe_windows.ps1`
 - `VENDOR_RTSP_DETOUR.md`
 - `INVESTIGATION.md`
+- `BUNDLE_COMPATIBILITY.md`
+- `TEMPERATURE_SENSOR_NOTES.md`
 
 Archived legacy sidecar files:
 

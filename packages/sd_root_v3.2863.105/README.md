@@ -17,6 +17,26 @@ The bootstrap now checks that md5 before patching. If the running `anyka_ipc` do
 
 This bundle now mirrors the known-good SD backup layout for the core boot path, but it intentionally leaves out the old optional `8080` web UI files because the RTSP/Tuya coexistence path does not use them.
 
+## Relationship To The `V3.2863.93` Bundle
+
+The root bundle implementation is shared with `V3.2863.93`.
+
+As of `2026-05-18`, every file under:
+
+- `packages/sd_root_v3.2863.105/root/`
+- `packages/sd_root_v3.2863.93/root/`
+
+is byte-identical except:
+
+- `vendor_rtsp_boot.md5`
+
+The shared `vendor_rtsp_boot.sh` detects the running stock `anyka_ipc` MD5 and
+selects the correct RTSP offsets automatically. The `V3.2863.105` path uses the
+current `rtsp_kick` defaults; the `V3.2863.93` path passes explicit offset
+flags to the same `rtsp_kick` binary.
+
+See `../../BUNDLE_COMPATIBILITY.md` for the full comparison.
+
 ## What this bundle assumes
 
 This bundle is meant to be copied onto a blank SD card root for the tested stock firmware path.

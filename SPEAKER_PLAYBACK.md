@@ -20,6 +20,16 @@ Validated on `2026-05-18` against the `quintal` camera:
   from `/tmp/speaker.mp3`, `anyka_ipc` stayed on PID `1045`, uptime continued
   from `1096s` to `1198s`, and ports `24`, `88`, `89`, and `6668` stayed open
 
+Also validated on `2026-05-18` against the `sala` camera:
+
+- camera IP: `192.168.1.130`
+- firmware class: `V3.2863.105`
+- stock `anyka_ipc` md5: `c31358a8f598c56073720e96c004fa9c`
+- result: generated TTS MP3 playback from speech-server `192.168.1.70:18070`
+  was confirmed audible by the user
+- volume: stock AO volume argument `10` is the validated maximum; `20` logs a
+  stock range warning and is not the documented max
+
 ## Current State From Live Testing
 
 Live test state on `2026-05-18`:
@@ -246,6 +256,8 @@ Live validation on `2026-05-18`:
 - the user confirmed the phrase played through the `quintal` camera
 - `anyka_ipc` stayed on PID `1045`, uptime continued from `1792s` to `1897s`,
   and ports `24`, `88`, `89`, and `6668` stayed open
+- the same `format: "mp3-v93"` output was also confirmed audible through the
+  `sala` V3.2863.105 camera when played with the V105 audio offsets below
 
 ## Manual V93 Sequence
 
@@ -303,6 +315,60 @@ Useful log check:
 ```sh
 tail -120 /var/log/messages | grep -E 'ADEC|AO|playback|MP3|source|volume'
 ```
+
+## Manual V105 Sequence
+
+The `sala` camera uses the same MP3 envelope and `/tmp/speaker.mp3` path, but
+the stock audio function addresses differ:
+
+```sh
+PID="$(pidof anyka_ipc | awk '{print $1}')"
+
+# Optional cleanup if a previous playback attempt left the decoder busy.
+/tmp/rtsp_kick "$PID" --verbose \
+  --func-vaddr 0x000bdff4 \
+  --guard-vaddr 0x00587600 \
+  --no-guard-check || true
+
+/tmp/rtsp_kick "$PID" --verbose \
+  --func-vaddr 0x000bda2c \
+  --guard-vaddr 0x00587600 \
+  --arg0 0 \
+  --no-guard-check || true
+
+# Start channel 0 as MP3.
+/tmp/rtsp_kick "$PID" --verbose \
+  --func-vaddr 0x000bd718 \
+  --guard-vaddr 0x00587600 \
+  --arg0 0 \
+  --arg1 2 \
+  --no-guard-check
+
+# Set maximum stock AO volume.
+/tmp/rtsp_kick "$PID" --verbose \
+  --func-vaddr 0x000be430 \
+  --guard-vaddr 0x00587600 \
+  --arg0 10 \
+  --no-guard-check
+
+# Play generated MP3 from /tmp/speaker.mp3.
+/tmp/rtsp_kick "$PID" --verbose \
+  --func-vaddr 0x000bdb5c \
+  --guard-vaddr 0x00587600 \
+  --arg0-string /tmp/speaker.mp3 \
+  --call-in-new-thread \
+  --malloc-vaddr 0x000798b4 \
+  --thread-create-vaddr 0x00144428 \
+  --thread-stack-size 0x10000 \
+  --wait-timeout 30 \
+  --no-guard-check
+```
+
+The RTSP audio track on the `sala` camera is currently not useful for verifying
+speaker playback. Captures from `rtsp://192.168.1.130:88/videoMain` produced a
+PCMA audio track, but the decoded WAV was constant silence even while the user
+heard speaker playback. That appears to be an RTSP audio capture issue separate
+from speaker output.
 
 ## V93 Addresses
 
