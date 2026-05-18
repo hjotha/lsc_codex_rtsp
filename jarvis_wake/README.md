@@ -125,11 +125,27 @@ With network enabled, the default POST target is:
 POST http://192.168.1.70:18070/v1/wake
 ```
 
-That endpoint is not present in the current speech-server yet. Use `--no-net`
-until the receiver exists, or override host/port/path:
+That endpoint is present on the deployed speech-server. It starts S10+
+RTSP-capture-plus-Whisper work in the background and exposes the latest result
+through `GET /v1/wake/status`.
+
+Override host/port/path as needed:
 
 ```bash
-cat some_camera_audio.raw | ./run.sh --host 192.168.1.70 --port 18070 --path /v1/wake
+cat some_camera_audio.raw | ./run.sh --host 192.168.1.70 --port 18070 --path '/v1/wake?camera=sala'
+```
+
+When running on a camera, put the camera selector in the path so the
+speech-server knows which RTSP stream to open:
+
+```bash
+/tmp/jarvis_wake \
+  --ak-stream /tmp/AudioStream \
+  --rate 8000 \
+  --template /tmp/jarvis_01.raw \
+  --host 192.168.1.70 \
+  --port 18070 \
+  --path '/v1/wake?camera=sala&duration_ms=8000'
 ```
 
 ## Detector Notes

@@ -107,11 +107,35 @@ Connection: close
 {"wake_word":"jarvis","confidence":0.477,"score":46990,"threshold":90000,"timestamp":1779098167}
 ```
 
-The real speech-server still needs a receiver endpoint. The planned default is:
+The deployed speech-server now has a receiver endpoint. The default target is:
 
 ```text
 POST http://192.168.1.70:18070/v1/wake
 ```
+
+`POST /v1/wake` accepts `rtsp_url=...` or camera selectors such as
+`camera=sala` and `camera=quintal`, starts RTSP capture plus Whisper in the
+background, and exposes the latest result via:
+
+```text
+GET http://192.168.1.70:18070/v1/wake/status
+```
+
+The direct WebSocket STT endpoint can also open camera RTSP audio itself:
+
+```text
+ws://192.168.1.70:18070/v1/stt/stream?rtsp_url=rtsp://192.168.1.130:89/videoSub&duration_ms=8000
+```
+
+Smoke tests after deployment showed both cameras using SDP-advertised PCMA
+payload type `97` at `8000 Hz`:
+
+```text
+sala    192.168.1.130:89/videoSub packets=38 audio_ms=1216
+quintal 192.168.1.165:89/videoSub packets=68 audio_ms=2176
+```
+
+See `SPEECH_SERVER_WAKE_STT.md` for the endpoint contract and run examples.
 
 ## RTSP Transport Finding
 

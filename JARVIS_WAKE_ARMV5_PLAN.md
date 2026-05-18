@@ -293,12 +293,13 @@ Validated on `2026-05-18`:
 - the main Android speech-server responds on `http://192.168.1.70:18070`
 - `GET http://192.168.1.70:18070/health` reports `"port": 18070`
 - `192.168.1.70:8080` is not listening
-- `POST http://192.168.1.70:18070/wake` currently returns `404 not_found`
 - the checked speech-server code exposes:
   - `GET /health`
   - `POST /v1/tts`
   - `POST /v1/stt/file`
   - websocket `/v1/stt/stream`
+  - `POST /v1/wake`
+  - `GET /v1/wake/status`
 
 So the detector must not hardcode `192.168.1.70:8080/wake`.
 
@@ -308,15 +309,24 @@ For this prototype, make the wake target configurable:
 - default port: `18070`
 - default path: `/v1/wake`
 
-`/v1/wake` does not exist yet. It is the proposed endpoint to add to the
-existing speech-server later, or to serve with a separate tiny receiver during
-testing. The on-camera detector should only need host, port, and path strings.
+`/v1/wake` now exists on the deployed speech-server. It returns quickly and
+runs the RTSP capture plus Whisper transcription in a background thread. Poll
+`GET /v1/wake/status` to read the latest capture metrics and transcript.
+
+The direct WebSocket STT path also accepts camera RTSP URLs:
+
+```text
+ws://192.168.1.70:18070/v1/stt/stream?rtsp_url=rtsp://CAMERA_IP:89/videoSub&duration_ms=8000
+```
+
+The server also accepts `camera=sala`, `camera=quintal`, `camera_ip=...`, and
+`stream=sub|main`. See `SPEECH_SERVER_WAKE_STT.md` for the full contract.
 
 ## HTTP Wake POST
 
 Use raw TCP sockets. No libcurl.
 
-Proposed endpoint after the speech-server side is added:
+Current endpoint:
 
 ```text
 POST http://192.168.1.70:18070/v1/wake

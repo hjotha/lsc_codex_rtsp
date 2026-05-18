@@ -36,6 +36,8 @@ See `TEMPERATURE_SENSOR_NOTES.md` for the inactive baby-monitor temperature
 sensor path found in the stock binaries.
 See `JARVIS_WAKE_ARMV5_PLAN.md` and `JARVIS_WAKE_ARMV5_FINDINGS.md` for the
 experimental local `Jarvis` wake-word prototype for the ARMv5 camera hardware.
+See `SPEECH_SERVER_WAKE_STT.md` for the S10+ speech-server bridge that accepts
+camera RTSP URLs and runs Whisper after a wake event.
 
 What is already proven:
 
@@ -47,6 +49,8 @@ What is already proven:
 - generated MP3/TTS playback has been validated on both the `quintal` V93
   camera and the `sala` V105 camera when encoded as 8000 Hz mono 64 kbps MP3
   and played from `/tmp/speaker.mp3`
+- the S10+ speech-server can open camera RTSP microphone URLs directly through
+  `/v1/stt/stream` and `/v1/wake`
 - the stock vendor RTSP server responds on:
   `88`
   `89`
